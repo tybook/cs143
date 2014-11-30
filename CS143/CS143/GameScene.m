@@ -23,14 +23,14 @@ GameViewController *gameView;
     self.gameView = (GameViewController *)[[[[UIApplication sharedApplication] delegate] window] rootViewController];
     
     /* Setup your scene here */
-    SKLabelNode *myLabel = [SKLabelNode labelNodeWithFontNamed:@"Chalkduster"];
+    /*SKLabelNode *myLabel = [SKLabelNode labelNodeWithFontNamed:@"Chalkduster"];
     
     myLabel.text = @"Hello, World!";
     myLabel.fontSize = 65;
     myLabel.position = CGPointMake(CGRectGetMidX(self.frame),
                                    CGRectGetMidY(self.frame));
     
-    [self addChild:myLabel];
+    [self addChild:myLabel];*/
 }
 
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
