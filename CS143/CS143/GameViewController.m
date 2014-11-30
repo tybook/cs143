@@ -215,7 +215,7 @@
  */
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary *)advertisementData RSSI:(NSNumber *)RSSI
 {
-    NSLog(@"Discovered %@ at %@", peripheral.name, RSSI);
+    //NSLog(@"Discovered %@ at %@", peripheral.name, RSSI);
     
     // Ok, it's in range - have we already seen it?
     if (![self.discoveredPeripherals member:peripheral]) {
@@ -328,17 +328,18 @@
     [self cleanup:peripheral];
 }
 
+- (void)peripheral:(CBPeripheral *)peripheral didModifyServices:(NSArray *)invalidatedServices
+{
+    NSLog(@"Peripheral %@ modified services", peripheral);
+    [self cleanup:peripheral];
+}
+
 /** Call this when things either go wrong, or you're done with the connection.
  *  This cancels any subscriptions if there are any, or straight disconnects if not.
  *  (didUpdateNotificationStateForCharacteristic will cancel the connection if a subscription is involved)
  */
 - (void)cleanup: (CBPeripheral *)peripheral
 {
-    // Don't do anything if we're not connected
-    if (!peripheral.isConnected) {
-        return;
-    }
-    
     // See if we are subscribed to a characteristic on the peripheral
     if (peripheral.services != nil) {
         for (CBService *service in peripheral.services) {
