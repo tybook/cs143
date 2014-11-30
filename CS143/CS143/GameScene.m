@@ -7,10 +7,14 @@
 //
 
 #import "GameScene.h"
+#import "GameViewController.h"
+
+GameViewController *gameView;
 
 @implementation GameScene
 
 -(void)didMoveToView:(SKView *)view {
+    gameView = (GameViewController *)[[[[UIApplication sharedApplication] delegate] window] rootViewController];
     /* Setup your scene here */
     SKLabelNode *myLabel = [SKLabelNode labelNodeWithFontNamed:@"Chalkduster"];
     
@@ -26,6 +30,8 @@
     /* Called when a touch begins */
     
     // Propose a client action
+    NSData *data = [@"TEST STRING" dataUsingEncoding:NSUTF8StringEncoding];
+    [gameView proposeData:data];
 
     
     for (UITouch *touch in touches) {

@@ -8,7 +8,10 @@
 
 #import <UIKit/UIKit.h>
 #import <SpriteKit/SpriteKit.h>
+#import <CoreBluetooth/CoreBluetooth.h>
 
 @interface GameViewController : UIViewController
+
+- (void)proposeData:(NSData *) data;
 
 @end

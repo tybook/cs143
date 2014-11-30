@@ -8,7 +8,6 @@
 
 #import "GameViewController.h"
 #import "GameScene.h"
-#import <CoreBluetooth/CoreBluetooth.h>
 
 @implementation SKScene (Unarchive)
 
@@ -46,6 +45,7 @@
 
 /* Client proposals of data */
 @property (strong, nonatomic) CBMutableCharacteristic   *proposeCharacteristic;
+
 @end
 
 #define RAFT_SERVICE_UUID                   @"698C6448-C9A4-4CAC-A30A-D33F3AF25330"
@@ -124,6 +124,14 @@
 }
 
 #pragma mark - Peripheral Methods
+
+/*
+ * Client app proposing data to central (max of 12 bytes of data)
+ */
+- (void)proposeData:(NSData *)data
+{
+    [self.peripheralManager updateValue:data forCharacteristic:self.proposeCharacteristic onSubscribedCentrals:nil];
+}
 
 /** Required protocol method.  A full app should take care of all the possible states,
  *  but we're just waiting for  to know when the CBPeripheralManager is ready
@@ -285,6 +293,9 @@
     // Again, we loop through the array, just in case.
     for (CBCharacteristic *characteristic in service.characteristics) {
         NSLog(@"Discovered characteristic %@", characteristic);
+        if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]]) {
+            [peripheral setNotifyValue:YES forCharacteristic:characteristic];
+        }
     }
 }
 
@@ -292,32 +303,15 @@
  */
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
 {
-    NSLog(@"THIS SHOULD NOT BE CALLED");
-    /*    if (error) {
-     NSLog(@"Error discovering characteristics: %@", [error localizedDescription]);
-     return;
+     if (error) {
+        NSLog(@"Error discovering characteristics: %@", [error localizedDescription]);
+        return;
      }
      
      NSString *stringFromData = [[NSString alloc] initWithData:characteristic.value encoding:NSUTF8StringEncoding];
-     
-     // Have we got everything we need?
-     if ([stringFromData isEqualToString:@"EOM"]) {
-     
-     // We have, so show the data,
-     [self.textview setText:[[NSString alloc] initWithData:self.data encoding:NSUTF8StringEncoding]];
-     
-     // Cancel our subscription to the characteristic
-     [peripheral setNotifyValue:NO forCharacteristic:characteristic];
-     
-     // and disconnect from the peripehral
-     [self.centralManager cancelPeripheralConnection:peripheral];
-     }
-     
-     // Otherwise, just add the data on to what we already have
-     [self.data appendData:characteristic.value];
-     
+    
      // Log it
-     NSLog(@"Received: %@", stringFromData); */
+     NSLog(@"Received: %@", stringFromData);
 }
 
 /** Once the disconnection happens, we need to clean up our local copy of the peripheral
