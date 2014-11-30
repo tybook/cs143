@@ -25,6 +25,9 @@
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
     /* Called when a touch begins */
     
+    // Propose a client action
+
+    
     for (UITouch *touch in touches) {
         CGPoint location = [touch locationInNode:self];
         
@@ -41,6 +44,9 @@
         [self addChild:sprite];
     }
 }
+
+//-(void)commitTouch:
+
 
 -(void)update:(CFTimeInterval)currentTime {
     /* Called before each frame is rendered */
