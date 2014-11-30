@@ -29,6 +29,7 @@
 @end
 
 @interface GameViewController () <CBPeripheralManagerDelegate, CBCentralManagerDelegate, CBPeripheralDelegate>
+
 @property (strong, nonatomic) CBCentralManager      *centralManager;
 @property (strong, nonatomic) CBPeripheralManager   *peripheralManager;
 
@@ -38,11 +39,9 @@
 /* We have an established leader already */
 @property (strong, nonatomic) CBMutableCharacteristic   *toCentralCharacteristic;
 @property (strong, nonatomic) CBMutableCharacteristic   *fromCentralCharacteristic;
-
 /* Leader election */
 @property (strong, nonatomic) CBMutableCharacteristic   *toLeaderCharacteristic;
 @property (strong, nonatomic) CBMutableCharacteristic   *fromLeaderCharacteristic;
-
 /* Client proposals of data */
 @property (strong, nonatomic) CBMutableCharacteristic   *proposeCharacteristic;
 
@@ -73,6 +72,7 @@
     GameScene *scene = [GameScene unarchiveFromFile:@"GameScene"];
     scene.scaleMode = SKSceneScaleModeAspectFill;
     
+    
     self.discoveredPeripherals = [[NSMutableSet alloc] init];
     
     // Start up the CBPeripheralManager
@@ -81,9 +81,7 @@
     // Start up the CBCentralManager
     self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
     
-    
-    // delay for a bit
-    
+
     // Present the scene.
     [skView presentScene:scene];
 }
@@ -97,7 +95,6 @@
     
     [super viewWillDisappear:animated];
 }
-
 
 - (BOOL)shouldAutorotate
 {
@@ -125,8 +122,7 @@
 
 #pragma mark - Peripheral Methods
 
-/*
- * Client app proposing data to central (max of 12 bytes of data)
+/** Client app proposing data to central (max of 12 bytes of data)
  */
 - (void)proposeData:(NSData *)data
 {
@@ -134,7 +130,7 @@
 }
 
 /** Required protocol method.  A full app should take care of all the possible states,
- *  but we're just waiting for  to know when the CBPeripheralManager is ready
+ *  but we're just waiting to know when the CBPeripheralManager is ready
  */
 - (void)peripheralManagerDidUpdateState:(CBPeripheralManager *)peripheral
 {
@@ -143,10 +139,6 @@
         return;
     }
     
-    // We're in CBPeripheralManagerStatePoweredOn state...
-    NSLog(@"self.peripheralManager powered on.");
-    
-    // ... so build our service.
     
     // Set up the characteristics
     self.toCentralCharacteristic = [[CBMutableCharacteristic alloc]
@@ -194,6 +186,7 @@
     // All we advertise is our service's UUID
     [self.peripheralManager startAdvertising:@{ CBAdvertisementDataServiceUUIDsKey :
                                                     @[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]] }];
+    NSLog(@"Advertising started");
 }
 
 #pragma mark - Central Methods
@@ -206,13 +199,10 @@
 - (void)centralManagerDidUpdateState:(CBCentralManager *)central
 {
     if (central.state != CBCentralManagerStatePoweredOn) {
-        // In a real app, you'd deal with all the states correctly
         return;
     }
     
-    // The state must be CBCentralManagerStatePoweredOn...
-    
-    // ... so start scanning
+    // Start scanning
     [self.centralManager scanForPeripheralsWithServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]
                                                 options:@{ CBCentralManagerScanOptionAllowDuplicatesKey : @YES }];
     NSLog(@"Scanning started");
@@ -271,10 +261,9 @@
         return;
     }
     
-    // Discover the characteristic we want...
-    
     // Loop through the newly filled peripheral.services array, just in case there's more than one.
     for (CBService *service in peripheral.services) {
+        NSLog(@"Discovered service %@", service);
         [peripheral discoverCharacteristics:nil forService:service];
     }
 }
@@ -309,7 +298,7 @@
      }
      
      NSString *stringFromData = [[NSString alloc] initWithData:characteristic.value encoding:NSUTF8StringEncoding];
-    
+     
      // Log it
      NSLog(@"Received: %@", stringFromData);
 }
