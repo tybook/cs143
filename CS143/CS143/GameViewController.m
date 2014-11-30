@@ -79,7 +79,8 @@
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
     
     // Start up the CBCentralManager
-    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
+    dispatch_queue_t centralQueue = dispatch_queue_create("centralQueue", DISPATCH_QUEUE_SERIAL);
+    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:centralQueue];
     
 
     // Present the scene.
