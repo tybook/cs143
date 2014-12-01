@@ -80,12 +80,12 @@ raft_server_t *raft_server;
     [scanner scanHexInt:&nodeid];
     
     
-    raft_node_configuration_t cfg[] = {
+    /*raft_node_configuration_t cfg[] = {
         {(-1),(void*)1},
         {(-1),(void*)2},
         {(-1),NULL}};
 
-    raft_set_configuration(<#raft_server_t *me_#>, <#raft_node_configuration_t *nodes#>, 0);
+    raft_set_configuration(<#raft_server_t *me_#>, <#raft_node_configuration_t *nodes#>, 0);*/
 
     // periodically update raft state
     [NSTimer scheduledTimerWithTimeInterval:RAFT_PERIODIC_SEC
