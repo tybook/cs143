@@ -101,7 +101,7 @@ raft_server_t *raft_server;
     
     // Configure the view.
     SKView * skView = (SKView *)self.view;
-    skView.showsFPS = YES;
+    skView.showsFPS = NO;
     skView.showsNodeCount = YES;
     /* Sprite Kit applies additional optimizations to improve rendering performance */
     skView.ignoresSiblingOrder = YES;
@@ -119,7 +119,8 @@ raft_server_t *raft_server;
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
     
     // Start up the CBCentralManager
-    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
+    dispatch_queue_t centralQueue = dispatch_queue_create("centralQueue", DISPATCH_QUEUE_SERIAL);
+    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:centralQueue];
     
 
     // Present the scene.
