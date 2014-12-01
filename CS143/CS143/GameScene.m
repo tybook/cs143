@@ -19,18 +19,24 @@ GameViewController *gameView;
 
 @implementation GameScene
 
+-(void)clearScene
+{
+    [self removeAllChildren];
+}
+
 -(void)didMoveToView:(SKView *)view {
     self.gameView = (GameViewController *)[[[[UIApplication sharedApplication] delegate] window] rootViewController];
     
     /* Setup your scene here */
-    /*SKLabelNode *myLabel = [SKLabelNode labelNodeWithFontNamed:@"Chalkduster"];
-    
-    myLabel.text = @"Hello, World!";
-    myLabel.fontSize = 65;
-    myLabel.position = CGPointMake(CGRectGetMidX(self.frame),
-                                   CGRectGetMidY(self.frame));
-    
-    [self addChild:myLabel];*/
+    UIButton *resetButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
+    resetButton.titleLabel.font = [UIFont systemFontOfSize:16];
+    CGFloat width = 100;
+    CGFloat height = 50;
+    [resetButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
+                                     self.view.frame.size.height - 75, width, height)];
+    [resetButton setTitle:@"Clear" forState:UIControlStateNormal];
+    [resetButton addTarget:self action:@selector(clearScene) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:resetButton];
 }
 
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
@@ -62,8 +68,8 @@ GameViewController *gameView;
 {
     SKSpriteNode *sprite = [SKSpriteNode spriteNodeWithImageNamed:@"Spaceship"];
     
-    sprite.xScale = 0.5;
-    sprite.yScale = 0.5;
+    sprite.xScale = 0.2;
+    sprite.yScale = 0.2;
     sprite.position = coors;
     
     SKAction *action = [SKAction rotateByAngle:M_PI duration:1];

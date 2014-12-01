@@ -121,8 +121,8 @@ raft_server_t *raft_server;
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
     
     // Start up the CBCentralManager
-    dispatch_queue_t centralQueue = dispatch_queue_create("centralQueue", DISPATCH_QUEUE_SERIAL);
-    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:centralQueue];
+    //dispatch_queue_t centralQueue = dispatch_queue_create("centralQueue", DISPATCH_QUEUE_SERIAL);
+    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
     
 
     // Present the scene.
