@@ -37,36 +37,41 @@ GameViewController *gameView;
     /* Called when a touch begins */
     
     // If raft_periodic has not started, start it now
-    if (!self.gameView.raft_periodic_started)
+    /*if (!self.gameView.raft_periodic_started)
     {
         [self.gameView raft_start_periodic];
         return;
-    }
-    
-    // Propose a client action
-    NSData *data = [@"TEST STRING" dataUsingEncoding:NSUTF8StringEncoding];
-    [self.gameView proposeData:data];
-
+    }*/
     
     for (UITouch *touch in touches) {
         CGPoint location = [touch locationInNode:self];
         
-        SKSpriteNode *sprite = [SKSpriteNode spriteNodeWithImageNamed:@"Spaceship"];
+        // Propose a client action
+        float coors[2];
+        coors[0] = (float)location.x;
+        coors[1] = (float)location.y;
+        NSData *data = [NSData dataWithBytes:coors length:8];
         
-        sprite.xScale = 0.5;
-        sprite.yScale = 0.5;
-        sprite.position = location;
+        [self.gameView proposeData:data];
         
-        SKAction *action = [SKAction rotateByAngle:M_PI duration:1];
-        
-        [sprite runAction:[SKAction repeatActionForever:action]];
-        
-        [self addChild:sprite];
+        [self drawTouch:location];
     }
 }
 
-//-(void)commitTouch:
-
+-(void)drawTouch:(CGPoint)coors
+{
+    SKSpriteNode *sprite = [SKSpriteNode spriteNodeWithImageNamed:@"Spaceship"];
+    
+    sprite.xScale = 0.5;
+    sprite.yScale = 0.5;
+    sprite.position = coors;
+    
+    SKAction *action = [SKAction rotateByAngle:M_PI duration:1];
+    
+    [sprite runAction:[SKAction repeatActionForever:action]];
+    
+    [self addChild:sprite];
+}
 
 -(void)update:(CFTimeInterval)currentTime {
     /* Called before each frame is rendered */

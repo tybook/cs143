@@ -31,6 +31,8 @@
 
 @interface GameViewController () <CBPeripheralManagerDelegate, CBCentralManagerDelegate, CBPeripheralDelegate>
 
+@property (strong, nonatomic) GameScene             *scene;
+
 @property (strong, nonatomic) CBCentralManager      *centralManager;
 @property (strong, nonatomic) CBPeripheralManager   *peripheralManager;
 
@@ -107,11 +109,11 @@ raft_server_t *raft_server;
     skView.ignoresSiblingOrder = YES;
     
     // Create and configure the scene.
-    GameScene *scene = [GameScene unarchiveFromFile:@"GameScene"];
-    scene.scaleMode = SKSceneScaleModeAspectFill;
+    self.scene = [GameScene unarchiveFromFile:@"GameScene"];
+    self.scene.scaleMode = SKSceneScaleModeAspectFill;
     
     // create a new raft server
-    raft_server = raft_new(nodeid);
+    //raft_server = raft_new(nodeid);
     
     self.discoveredPeripherals = [[NSMutableDictionary alloc] init];
     
@@ -124,7 +126,7 @@ raft_server_t *raft_server;
     
 
     // Present the scene.
-    [skView presentScene:scene];
+    [skView presentScene:self.scene];
 }
 
 - (void)viewWillDisappear:(BOOL)animated
@@ -325,9 +327,9 @@ raft_server_t *raft_server;
     for (CBCharacteristic *characteristic in service.characteristics) {
         NSLog(@"Discovered characteristic %@", characteristic);
         [characs addObject:characteristic];
-/*        if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]]) {
+        if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]]) {
             [peripheral setNotifyValue:YES forCharacteristic:characteristic];
-        } */
+        }
     }
     
     // Save all the characteristics for this peripheral
@@ -338,15 +340,19 @@ raft_server_t *raft_server;
  */
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
 {
-     if (error) {
+    if (error) {
         NSLog(@"Error discovering characteristics: %@", [error localizedDescription]);
         return;
-     }
-     
-     NSString *stringFromData = [[NSString alloc] initWithData:characteristic.value encoding:NSUTF8StringEncoding];
-     
-     // Log it
-     NSLog(@"Received: %@", stringFromData);
+    }
+    
+    // Right now we know that we are just getting coordinates...
+    // |_ x coor _ | _ y coor _ | 8 bytes
+    
+    float coors[2];
+    [characteristic.value getBytes:coors length:8];
+ 
+    CGPoint point = CGPointMake(coors[0], coors[1]);
+    [self.scene drawTouch:point];
 }
 
 /** Once the disconnection happens, we need to clean up our local copy of the peripheral

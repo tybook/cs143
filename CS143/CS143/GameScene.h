@@ -10,4 +10,6 @@
 
 @interface GameScene : SKScene
 
+-(void)drawTouch: (CGPoint) coors;
+
 @end
