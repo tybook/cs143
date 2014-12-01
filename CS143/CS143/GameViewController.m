@@ -8,6 +8,7 @@
 
 #import "GameViewController.h"
 #import "GameScene.h"
+#import "raft.h"
 
 @implementation SKScene (Unarchive)
 
@@ -34,7 +35,7 @@
 @property (strong, nonatomic) CBPeripheralManager   *peripheralManager;
 
 /* Peripherals we are connected to */
-@property (strong, nonatomic) NSMutableSet *discoveredPeripherals;
+@property (strong, nonatomic) NSMutableDictionary   *discoveredPeripherals;
 
 /* We have an established leader already */
 @property (strong, nonatomic) CBMutableCharacteristic   *toCentralCharacteristic;
@@ -47,6 +48,8 @@
 
 @end
 
+raft_server_t *raft_server;
+
 #define RAFT_SERVICE_UUID                   @"698C6448-C9A4-4CAC-A30A-D33F3AF25330"
 #define RAFT_TO_CENTRAL_CHAR_UUID           @"F6ACB6F5-04C5-441C-A5AF-12129B550E58"
 #define RAFT_FROM_CENTRAL_CHAR_UUID         @"02E6CA47-2D9E-4A09-8117-34D1545715DA"
@@ -54,8 +57,43 @@
 #define RAFT_FROM_LEADER_ELECTION_CHAR_UUID @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
 #define RAFT_PROPOSE_CHAR_UUID              @"6A401949-869B-4DAF-9E75-2FFEF411EDEE"
 
+#define RAFT_PERIODIC_SEC                   0.01
+
 
 @implementation GameViewController
+
+- (void) raft_call_periodic
+{
+    raft_periodic(raft_server, RAFT_PERIODIC_SEC * 1000);
+}
+
+/* Button to start raft periodic server updates */
+- (void) raft_start_periodic
+{
+    self.raft_periodic_started = TRUE;
+    
+    // set up the raft configuration
+    NSString *uuid = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
+    NSString *short_uuid = [uuid componentsSeparatedByString:@"-"][0];
+    unsigned int nodeid = -1;
+    NSScanner* scanner = [NSScanner scannerWithString:short_uuid];
+    [scanner scanHexInt:&nodeid];
+    
+    
+    raft_node_configuration_t cfg[] = {
+        {(-1),(void*)1},
+        {(-1),(void*)2},
+        {(-1),NULL}};
+
+    raft_set_configuration(<#raft_server_t *me_#>, <#raft_node_configuration_t *nodes#>, 0);
+
+    // periodically update raft state
+    [NSTimer scheduledTimerWithTimeInterval:RAFT_PERIODIC_SEC
+                                     target:self
+                                   selector:@selector(raft_call_periodic)
+                                   userInfo:nil
+                                    repeats:YES];
+}
 
 - (void)viewDidLoad
 {
@@ -72,8 +110,10 @@
     GameScene *scene = [GameScene unarchiveFromFile:@"GameScene"];
     scene.scaleMode = SKSceneScaleModeAspectFill;
     
+    // create a new raft server
+    raft_server = raft_new(nodeid);
     
-    self.discoveredPeripherals = [[NSMutableSet alloc] init];
+    self.discoveredPeripherals = [[NSMutableDictionary alloc] init];
     
     // Start up the CBPeripheralManager
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
@@ -126,6 +166,9 @@
  */
 - (void)proposeData:(NSData *)data
 {
+    // if we are the master ...
+    
+    // otherwise
     [self.peripheralManager updateValue:data forCharacteristic:self.proposeCharacteristic onSubscribedCentrals:nil];
 }
 
@@ -216,12 +259,8 @@
     //NSLog(@"Discovered %@ at %@", peripheral.name, RSSI);
     
     // Ok, it's in range - have we already seen it?
-    if (![self.discoveredPeripherals member:peripheral]) {
-        
-        // Save a local copy of the peripheral, so CoreBluetooth doesn't get rid of it
-        [self.discoveredPeripherals addObject:peripheral];
-        
-        // And connect
+    if (self.discoveredPeripherals[peripheral] == NULL) {
+        // connect
         NSLog(@"Connecting to peripheral %@", peripheral);
         [self.centralManager connectPeripheral:peripheral options:nil];
     }
@@ -279,13 +318,19 @@
         return;
     }
     
+    NSMutableArray *characs = [[NSMutableArray alloc]init];
+    
     // Again, we loop through the array, just in case.
     for (CBCharacteristic *characteristic in service.characteristics) {
         NSLog(@"Discovered characteristic %@", characteristic);
-        if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]]) {
+        [characs addObject:characteristic];
+/*        if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]]) {
             [peripheral setNotifyValue:YES forCharacteristic:characteristic];
-        }
+        } */
     }
+    
+    // Save all the characteristics for this peripheral
+    [self.discoveredPeripherals setObject:characs forKey:peripheral];
 }
 
 /** This callback lets us know more data has arrived via notification on the characteristic
@@ -341,7 +386,7 @@
     [self.centralManager cancelPeripheralConnection:peripheral];
     
     // Remove it from self.discoveredPeripherals
-    [self.discoveredPeripherals removeObject:peripheral];
+    [self.discoveredPeripherals removeObjectForKey:peripheral];
 }
 
 

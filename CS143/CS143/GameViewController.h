@@ -10,8 +10,12 @@
 #import <SpriteKit/SpriteKit.h>
 #import <CoreBluetooth/CoreBluetooth.h>
 
+
 @interface GameViewController : UIViewController
 
+@property (assign, nonatomic) bool raft_periodic_started;
+
 - (void)proposeData:(NSData *) data;
+- (void) raft_start_periodic;
 
 @end

@@ -36,6 +36,13 @@ GameViewController *gameView;
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
     /* Called when a touch begins */
     
+    // If raft_periodic has not started, start it now
+    if (!self.gameView.raft_periodic_started)
+    {
+        [self.gameView raft_start_periodic];
+        return;
+    }
+    
     // Propose a client action
     NSData *data = [@"TEST STRING" dataUsingEncoding:NSUTF8StringEncoding];
     [self.gameView proposeData:data];

@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5FB3FAD51A2BC9AC00DF6FFA /* raft_server.c in Sources */ = {isa = PBXBuildFile; fileRef = 5FB3FAD41A2BC9AC00DF6FFA /* raft_server.c */; };
+		5FB3FAD91A2BCBEC00DF6FFA /* raft_node.c in Sources */ = {isa = PBXBuildFile; fileRef = 5FB3FAD81A2BCBEC00DF6FFA /* raft_node.c */; };
+		5FB3FADB1A2BCC0100DF6FFA /* raft_log.c in Sources */ = {isa = PBXBuildFile; fileRef = 5FB3FADA1A2BCC0100DF6FFA /* raft_log.c */; };
+		5FB3FADD1A2BCC0F00DF6FFA /* raft_server_properties.c in Sources */ = {isa = PBXBuildFile; fileRef = 5FB3FADC1A2BCC0F00DF6FFA /* raft_server_properties.c */; };
 		E7BC78C91A2929810061FBC6 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = E7BC78C81A2929810061FBC6 /* main.m */; };
 		E7BC78CC1A2929810061FBC6 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = E7BC78CB1A2929810061FBC6 /* AppDelegate.m */; };
 		E7BC78CF1A2929810061FBC6 /* GameScene.m in Sources */ = {isa = PBXBuildFile; fileRef = E7BC78CE1A2929810061FBC6 /* GameScene.m */; };
@@ -29,6 +33,13 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		5FB3FAD31A2BC91600DF6FFA /* raft.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = raft.h; sourceTree = "<group>"; };
+		5FB3FAD41A2BC9AC00DF6FFA /* raft_server.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = raft_server.c; sourceTree = "<group>"; };
+		5FB3FAD61A2BC9F200DF6FFA /* raft_private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = raft_private.h; sourceTree = "<group>"; };
+		5FB3FAD71A2BCAC000DF6FFA /* raft_log.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = raft_log.h; sourceTree = "<group>"; };
+		5FB3FAD81A2BCBEC00DF6FFA /* raft_node.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = raft_node.c; sourceTree = "<group>"; };
+		5FB3FADA1A2BCC0100DF6FFA /* raft_log.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = raft_log.c; sourceTree = "<group>"; };
+		5FB3FADC1A2BCC0F00DF6FFA /* raft_server_properties.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = raft_server_properties.c; sourceTree = "<group>"; };
 		E7BC78C31A2929810061FBC6 /* CS143.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CS143.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7BC78C71A2929810061FBC6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E7BC78C81A2929810061FBC6 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
@@ -65,6 +76,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5FB3FADE1A2BCC4300DF6FFA /* raft */ = {
+			isa = PBXGroup;
+			children = (
+				5FB3FAD31A2BC91600DF6FFA /* raft.h */,
+				5FB3FAD81A2BCBEC00DF6FFA /* raft_node.c */,
+				5FB3FADA1A2BCC0100DF6FFA /* raft_log.c */,
+				5FB3FAD41A2BC9AC00DF6FFA /* raft_server.c */,
+				5FB3FADC1A2BCC0F00DF6FFA /* raft_server_properties.c */,
+				5FB3FAD61A2BC9F200DF6FFA /* raft_private.h */,
+				5FB3FAD71A2BCAC000DF6FFA /* raft_log.h */,
+			);
+			name = raft;
+			sourceTree = "<group>";
+		};
 		E7BC78BA1A2929810061FBC6 = {
 			isa = PBXGroup;
 			children = (
@@ -97,6 +122,7 @@
 				E7BC78D81A2929810061FBC6 /* Images.xcassets */,
 				E7BC78DA1A2929810061FBC6 /* LaunchScreen.xib */,
 				E7BC78C61A2929810061FBC6 /* Supporting Files */,
+				5FB3FADE1A2BCC4300DF6FFA /* raft */,
 			);
 			path = CS143;
 			sourceTree = "<group>";
@@ -229,7 +255,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5FB3FADD1A2BCC0F00DF6FFA /* raft_server_properties.c in Sources */,
+				5FB3FAD51A2BC9AC00DF6FFA /* raft_server.c in Sources */,
 				E7BC78D41A2929810061FBC6 /* GameViewController.m in Sources */,
+				5FB3FAD91A2BCBEC00DF6FFA /* raft_node.c in Sources */,
+				5FB3FADB1A2BCC0100DF6FFA /* raft_log.c in Sources */,
 				E7BC78CC1A2929810061FBC6 /* AppDelegate.m in Sources */,
 				E7BC78CF1A2929810061FBC6 /* GameScene.m in Sources */,
 				E7BC78C91A2929810061FBC6 /* main.m in Sources */,
