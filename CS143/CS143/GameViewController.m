@@ -265,6 +265,7 @@ raft_server_t *raft_server;
     if (self.discoveredPeripherals[peripheral] == NULL) {
         // connect
         NSLog(@"Connecting to peripheral %@", peripheral);
+        [self.discoveredPeripherals setObject:@[] forKey:peripheral];
         [self.centralManager connectPeripheral:peripheral options:nil];
     }
 }
