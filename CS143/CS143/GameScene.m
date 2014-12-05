@@ -16,6 +16,7 @@ GameViewController *gameView;
 @property (weak, nonatomic) GameViewController *gameView;
 @property (strong, nonatomic) UIButton *startButton;
 @property (strong, nonatomic) UIButton *resetButton;
+@property (strong, nonatomic) UILabel *connectedLabel;
 
 @end
 
@@ -35,6 +36,12 @@ GameViewController *gameView;
     // hide the start button and show the clear button
     self.resetButton.hidden = NO;
     self.startButton.hidden = YES;
+    self.connectedLabel.hidden = YES;
+}
+
+-(void)handleConnected: (NSUInteger) numConnected
+{
+    self.connectedLabel.text = [NSString stringWithFormat:@"%lu Connected", numConnected];
 }
 
 -(void)didMoveToView:(SKView *)view {
@@ -60,6 +67,11 @@ GameViewController *gameView;
     [self.resetButton addTarget:self action:@selector(clearScene) forControlEvents:UIControlEventTouchUpInside];
     self.resetButton.hidden = YES;
     [self.view addSubview:self.resetButton];
+    
+    self.connectedLabel = [[UILabel alloc]initWithFrame:CGRectMake((self.view.frame.size.width - width)/2,
+                                                                   (self.view.frame.size.height - height)/2 + 50, width, height)];
+    self.connectedLabel.text = @"0 Connected";
+    [self.view addSubview:self.connectedLabel];
 
 }
 
