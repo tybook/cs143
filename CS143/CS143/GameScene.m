@@ -14,6 +14,8 @@ GameViewController *gameView;
 @interface GameScene ()
 
 @property (weak, nonatomic) GameViewController *gameView;
+@property (strong, nonatomic) UIButton *startButton;
+@property (strong, nonatomic) UIButton *resetButton;
 
 @end
 
@@ -24,23 +26,47 @@ GameViewController *gameView;
     [self removeAllChildren];
 }
 
+-(void)startGame
+{
+    // Tell every other device to start?
+    
+    // Start raft_periodic
+    
+    // hide the start button and show the clear button
+    self.resetButton.hidden = NO;
+    self.startButton.hidden = YES;
+}
+
 -(void)didMoveToView:(SKView *)view {
     self.gameView = (GameViewController *)[[[[UIApplication sharedApplication] delegate] window] rootViewController];
     
     /* Setup your scene here */
-    UIButton *resetButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
-    resetButton.titleLabel.font = [UIFont systemFontOfSize:16];
+    self.startButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
+    self.startButton.titleLabel.font = [UIFont systemFontOfSize:16];
     CGFloat width = 100;
     CGFloat height = 50;
-    [resetButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
+    [self.startButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
+                                     (self.view.frame.size.height - height)/2, width, height)];
+    [self.startButton setTitle:@"Start" forState:UIControlStateNormal];
+    [self.startButton addTarget:self action:@selector(startGame) forControlEvents:UIControlEventTouchUpInside];
+    self.startButton.hidden = NO;
+    [self.view addSubview:self.startButton];
+    
+    self.resetButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
+    self.resetButton.titleLabel.font = [UIFont systemFontOfSize:16];
+    [self.resetButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
                                      self.view.frame.size.height - 75, width, height)];
-    [resetButton setTitle:@"Clear" forState:UIControlStateNormal];
-    [resetButton addTarget:self action:@selector(clearScene) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:resetButton];
+    [self.resetButton setTitle:@"Reset" forState:UIControlStateNormal];
+    [self.resetButton addTarget:self action:@selector(clearScene) forControlEvents:UIControlEventTouchUpInside];
+    self.resetButton.hidden = YES;
+    [self.view addSubview:self.resetButton];
+
 }
 
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
     /* Called when a touch begins */
+    if (self.startButton.hidden == NO)
+        return;
     
     // If raft_periodic has not started, start it now
     /*if (!self.gameView.raft_periodic_started)

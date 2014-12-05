@@ -11,5 +11,6 @@
 @interface GameScene : SKScene
 
 -(void)drawTouch: (CGPoint) coors;
+-(void)handleConnected: (NSUInteger) numConnected;
 
 @end

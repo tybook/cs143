@@ -16,6 +16,6 @@
 @property (assign, nonatomic) bool raft_periodic_started;
 
 - (void)proposeData:(NSData *) data;
-- (void) raft_start_periodic;
+- (void)raft_start_periodic;
 
 @end
