@@ -37,7 +37,8 @@
 @property (strong, nonatomic) CBPeripheralManager   *peripheralManager;
 
 /* Peripherals we are connected to */
-@property (strong, nonatomic) NSMutableDictionary   *discoveredPeripherals;
+@property (strong, nonatomic) NSMutableArray   *discoveredPeripherals;
+@property (strong, nonatomic) NSMutableDictionary   *connectedPeripherals;
 
 /* We have an established leader already */
 @property (strong, nonatomic) CBMutableCharacteristic   *toCentralCharacteristic;
@@ -115,7 +116,8 @@ raft_server_t *raft_server;
     // create a new raft server
     //raft_server = raft_new(nodeid);
     
-    self.discoveredPeripherals = [[NSMutableDictionary alloc] init];
+    self.discoveredPeripherals = [[NSMutableArray alloc] init];
+    self.connectedPeripherals = [[NSMutableDictionary alloc] init];
     
     // Start up the CBPeripheralManager
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
@@ -254,6 +256,16 @@ raft_server_t *raft_server;
     NSLog(@"Scanning started");
 }
 
+-(BOOL) isDiscovered:(CBPeripheral*) peripheral
+{
+    for (CBPeripheral *p in self.discoveredPeripherals) {
+        if (p == peripheral) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 /** This callback comes whenever a peripheral that is advertising the RAFT_SERVICE_UUID is discovered.
  *  We start the connection process
  */
@@ -262,12 +274,11 @@ raft_server_t *raft_server;
     //NSLog(@"Discovered %@ at %@", peripheral.name, RSSI);
     
     // Ok, it's in range - have we already seen it?
-    if (self.discoveredPeripherals[peripheral] == NULL) {
+    if (![self isDiscovered:peripheral]) {
         // connect
-        NSLog(@"Connecting to peripheral %@", peripheral);
-        [self.discoveredPeripherals setObject:@[] forKey:peripheral];
-        [self.scene handleConnected:[[self.discoveredPeripherals allKeys] count]];
-        //[self.centralManager connectPeripheral:peripheral options:nil];
+        NSLog(@"Discovered %@, trying to connect", peripheral);
+        [self.discoveredPeripherals addObject:peripheral];
+        [self.centralManager connectPeripheral:peripheral options:nil];
     }
 }
 
@@ -276,6 +287,8 @@ raft_server_t *raft_server;
 - (void)centralManager:(CBCentralManager *)central didFailToConnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error
 {
     NSLog(@"Failed to connect to %@. (%@)", peripheral, [error localizedDescription]);
+    assert([self isDiscovered:peripheral]);
+    [self.discoveredPeripherals removeObject:peripheral];
     [self cleanup:peripheral];
 }
 
@@ -284,6 +297,8 @@ raft_server_t *raft_server;
 - (void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral
 {
     NSLog(@"Peripheral %@ Connected", peripheral);
+    [self.connectedPeripherals setObject:@[] forKey:peripheral];
+    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
     
     // Clear the data that we may already have
     //    [self.data setLength:0];
@@ -292,7 +307,7 @@ raft_server_t *raft_server;
     peripheral.delegate = self;
     
     // Search only for services that match our UUID
-    [peripheral discoverServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]];
+    //[peripheral discoverServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]];
 }
 
 /** The Transfer Service was discovered
@@ -335,7 +350,7 @@ raft_server_t *raft_server;
     }
     
     // Save all the characteristics for this peripheral
-    [self.discoveredPeripherals setObject:characs forKey:peripheral];
+    [self.connectedPeripherals setObject:characs forKey:peripheral];
 }
 
 /** This callback lets us know more data has arrived via notification on the characteristic
@@ -362,12 +377,18 @@ raft_server_t *raft_server;
 - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error
 {
     NSLog(@"Peripheral %@ Disconnected", peripheral);
+    [self.connectedPeripherals removeObjectForKey:peripheral];
+    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    [self.discoveredPeripherals removeObject:peripheral];
     [self cleanup:peripheral];
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didModifyServices:(NSArray *)invalidatedServices
 {
     NSLog(@"Peripheral %@ modified services", peripheral);
+    [self.connectedPeripherals removeObjectForKey:peripheral];
+    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    [self.discoveredPeripherals removeObject:peripheral];
     [self cleanup:peripheral];
 }
 
@@ -394,8 +415,6 @@ raft_server_t *raft_server;
     // If we've got this far, we're connected, but we're not subscribed, so we just disconnect
     [self.centralManager cancelPeripheralConnection:peripheral];
     
-    // Remove it from self.discoveredPeripherals
-    [self.discoveredPeripherals removeObjectForKey:peripheral];
 }
 
 
