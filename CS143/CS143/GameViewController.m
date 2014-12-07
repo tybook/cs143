@@ -38,7 +38,8 @@
 
 /* Peripherals we are connected to */
 @property (strong, nonatomic) NSMutableArray   *discoveredPeripherals;
-@property (strong, nonatomic) NSMutableDictionary   *connectedPeripherals;
+/* connectedPeripherals[p] = Dictionary from Char UUID to characteristic */
+@property (strong, nonatomic) NSMutableDictionary *connectedPeripherals;
 
 /* We have an established leader already */
 @property (strong, nonatomic) CBMutableCharacteristic   *toCentralCharacteristic;
@@ -49,46 +50,103 @@
 /* Client proposals of data */
 @property (strong, nonatomic) CBMutableCharacteristic   *proposeCharacteristic;
 
+/* Two way dictionary from UUID to RaftIdx and from RaftIdx to UUID */
+@property (strong, nonatomic)  NSMutableDictionary *PeripheralRaftIdxDict;
+
+/* Whether or not the raft server has started at this node */
+@property (assign, nonatomic)  BOOL raft_started;
 @end
 
 raft_server_t *raft_server;
 
-#define RAFT_SERVICE_UUID                   @"698C6448-C9A4-4CAC-A30A-D33F3AF25330"
-#define RAFT_TO_CENTRAL_CHAR_UUID           @"F6ACB6F5-04C5-441C-A5AF-12129B550E58"
-#define RAFT_FROM_CENTRAL_CHAR_UUID         @"02E6CA47-2D9E-4A09-8117-34D1545715DA"
-#define RAFT_TO_LEADER_ELECTION_CHAR_UUID   @"C1224A79-4715-4FFB-B43F-EA2B425EDD98"
-#define RAFT_FROM_LEADER_ELECTION_CHAR_UUID @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
-#define RAFT_PROPOSE_CHAR_UUID              @"6A401949-869B-4DAF-9E75-2FFEF411EDEE"
+/* I need global references to connectedPeripherals and PeripheralRaftIdxDict because they are
+ used in the c callback functions passed to raft. I want to use properties so that it can
+ use ARC for me, so I just keep global references to the instance variables...ew */
+NSMutableDictionary *pConnectedPeripherals;
+NSMutableDictionary *pPeripheralRaftIdxDict;
+
+
+
+#define RAFT_SERVICE_UUID                      @"698C6448-C9A4-4CAC-A30A-D33F3AF25330"
+#define RAFT_TO_CENTRAL_CHAR_UUID              @"F6ACB6F5-04C5-441C-A5AF-12129B550E58"
+#define RAFT_FROM_CENTRAL_CHAR_UUID            @"02E6CA47-2D9E-4A09-8117-34D1545715DA"
+#define RAFT_TO_CANDIDATE_ELECTION_CHAR_UUID   @"C1224A79-4715-4FFB-B43F-EA2B425EDD98"
+#define RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
+#define RAFT_PROPOSE_CHAR_UUID                 @"6A401949-869B-4DAF-9E75-2FFEF411EDEE"
 
 #define RAFT_PERIODIC_SEC                   0.01
 
 
 @implementation GameViewController
 
+/*
++ (id)sharedController {
+    static GameViewController *sharedController = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sharedController = [[self alloc] init];
+    });
+    return sharedController;
+}
+
+- (id)init {
+    if (self = [super init]) {
+        initialize instance variables here
+    }
+    return self;
+}*/
+
 - (void) raft_call_periodic
 {
     raft_periodic(raft_server, RAFT_PERIODIC_SEC * 1000);
 }
 
-/* Button to start raft periodic server updates */
-- (void) raft_start_periodic
+- (void) raft_start
 {
-    self.raft_periodic_started = TRUE;
+    assert(!self.raft_started);
+    self.raft_started = YES;
     
-    // set up the raft configuration
-    NSString *uuid = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
-    NSString *short_uuid = [uuid componentsSeparatedByString:@"-"][0];
-    unsigned int nodeid = -1;
-    NSScanner* scanner = [NSScanner scannerWithString:short_uuid];
-    [scanner scanHexInt:&nodeid];
+    // No need to advertise and scan anymore as the game has started
+    [self.peripheralManager stopAdvertising];
+    [self.centralManager stopScan];
     
+    // Discover the services of the connected peripherals
+    // It is possible that the characteristics won't be discovered yet when this device
+    // becomes a candidate. This is fine because it just means the device won't get enough
+    // votes to become the master
+    for (CBPeripheral* peripheral in [self.connectedPeripherals allKeys]) {
+        // Search only for services that match our UUID
+        [peripheral discoverServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]];
+    }
     
-    /*raft_node_configuration_t cfg[] = {
-        {(-1),(void*)1},
-        {(-1),(void*)2},
-        {(-1),NULL}};
+    // set up the raft configuration with yourself as idx 0
+    // keep a dictionary mapping UUID of peripheral to idx in nodes
+    NSUInteger numConnected = [[self.connectedPeripherals allKeys] count];
+    // one for self and one for NULL termination
+    // TODO! This is wasteful to keep index 0 empty, don't think we need it...
+    raft_node_configuration_t *nodes = malloc((2 + numConnected)*sizeof(raft_node_configuration_t));
 
-    raft_set_configuration(<#raft_server_t *me_#>, <#raft_node_configuration_t *nodes#>, 0);*/
+    // make sure this first node (self) doesn't look like the end
+    raft_node_configuration_t node = {(void*)1};
+    nodes[0] = node;
+
+    
+    // Store the connected peripherals into nodes array
+    NSNumber *idx = @1;
+    for (CBPeripheral *p in [self.connectedPeripherals allKeys]) {
+        NSUUID *UUID = [p identifier];
+        raft_node_configuration_t node = {(void*)CFBridgingRetain(UUID)};
+        nodes[[idx intValue]] = node;
+        [self.PeripheralRaftIdxDict setObject:idx forKey:p];
+        [self.PeripheralRaftIdxDict setObject:p forKey:idx];
+        idx = @([idx intValue] + 1);
+    }
+    
+    raft_node_configuration_t nodeEnd = {(void*)0};
+    nodes[[idx intValue]] = nodeEnd;
+
+    raft_set_configuration(raft_server, nodes);
+    
 
     // periodically update raft state
     [NSTimer scheduledTimerWithTimeInterval:RAFT_PERIODIC_SEC
@@ -96,6 +154,25 @@ raft_server_t *raft_server;
                                    selector:@selector(raft_call_periodic)
                                    userInfo:nil
                                     repeats:YES];
+}
+
+int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote_t* msg)
+{
+    CBPeripheral *p = pPeripheralRaftIdxDict[[NSNumber numberWithInt:peer]];
+    
+    // Write the msg to the right characteristic
+    CBUUID *characUUID = [CBUUID UUIDWithString:RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID];
+    NSMutableDictionary *characs = pConnectedPeripherals[p];
+    if (characs) {
+        CBCharacteristic *charac = characs[characUUID];
+        if (charac) {
+            NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_t)];
+            NSLog(@"Writing value for characteristic %@", charac);
+            [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
+            return 1;
+        }
+    }
+    return 0;
 }
 
 - (void)viewDidLoad
@@ -114,10 +191,23 @@ raft_server_t *raft_server;
     self.scene.scaleMode = SKSceneScaleModeAspectFill;
     
     // create a new raft server
-    //raft_server = raft_new(nodeid);
+    raft_server = raft_new(0);
+    NSUUID *ownUUID = [[UIDevice currentDevice] identifierForVendor];
+    NSLog(@"UUID: %@", [ownUUID UUIDString]);
+    
+    raft_cbs_t funcs = {
+        .send_requestvote = send_requestvote
+    };
+    
+    /* don't think we need the passed in udata to this function */
+    raft_set_callbacks(raft_server, &funcs, (void*) 0);
+    
     
     self.discoveredPeripherals = [[NSMutableArray alloc] init];
     self.connectedPeripherals = [[NSMutableDictionary alloc] init];
+    self.PeripheralRaftIdxDict = [[NSMutableDictionary alloc]init];
+    pConnectedPeripherals = self.connectedPeripherals;
+    pPeripheralRaftIdxDict = self.PeripheralRaftIdxDict;
     
     // Start up the CBPeripheralManager
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
@@ -196,7 +286,7 @@ raft_server_t *raft_server;
                                     permissions:CBAttributePermissionsReadable];
     
     self.toLeaderCharacteristic = [[CBMutableCharacteristic alloc]
-                                   initWithType:[CBUUID UUIDWithString:RAFT_TO_LEADER_ELECTION_CHAR_UUID]
+                                   initWithType:[CBUUID UUIDWithString:RAFT_TO_CANDIDATE_ELECTION_CHAR_UUID]
                                    properties:CBCharacteristicPropertyNotify|CBCharacteristicPropertyRead
                                    value:nil
                                    permissions:CBAttributePermissionsReadable];
@@ -214,7 +304,7 @@ raft_server_t *raft_server;
                                       permissions:CBAttributePermissionsWriteable];
     
     self.fromLeaderCharacteristic = [[CBMutableCharacteristic alloc]
-                                     initWithType:[CBUUID UUIDWithString:RAFT_FROM_LEADER_ELECTION_CHAR_UUID]
+                                     initWithType:[CBUUID UUIDWithString:RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID]
                                      properties:CBCharacteristicPropertyWriteWithoutResponse
                                      value:nil
                                      permissions:CBAttributePermissionsWriteable];
@@ -235,6 +325,41 @@ raft_server_t *raft_server;
     [self.peripheralManager startAdvertising:@{ CBAdvertisementDataServiceUUIDsKey :
                                                     @[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]] }];
     NSLog(@"Advertising started");
+}
+
+- (void)peripheralManager:(CBPeripheralManager *)peripheral didReceiveWriteRequests:(NSArray *)requests
+{
+    /* If this is the first request, start up the raft server */
+    if (!self.raft_started) {
+        [self raft_start];
+    }
+    
+    /* TODO! loop through all the requests, not just the first one */
+    CBATTRequest* request = [requests objectAtIndex:0];
+    NSData* request_data = request.value;
+    CBCharacteristic* charac = request.characteristic;
+
+    if([charac.UUID isEqual: [CBUUID UUIDWithString: RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID]])
+    {
+        NSLog(@"Got message from candidate for election");
+        
+        /* We need to get the node number for the central that made the request.
+            We can get a CBCentral but this won't equal the CBPeripheral we store
+            in our dictionaries. Unless we make changes, we have to enumerate the dictionary
+            and look for a matching UUID */
+        int node = -1;
+        NSString *uuid = [[request.central identifier] UUIDString];
+        for (CBPeripheral *p in self.connectedPeripherals) {
+            if ([uuid isEqualToString:[[p identifier] UUIDString]]) {
+                node = [self.PeripheralRaftIdxDict[p] intValue];
+            }
+        }
+        msg_requestvote_t requestvote;
+        if (node != -1) {
+            [request_data getBytes:&requestvote length:sizeof(msg_requestvote_t)];
+            raft_recv_requestvote(raft_server, node, &requestvote);
+        }
+    }
 }
 
 #pragma mark - Central Methods
@@ -259,7 +384,7 @@ raft_server_t *raft_server;
 -(BOOL) isDiscovered:(CBPeripheral*) peripheral
 {
     for (CBPeripheral *p in self.discoveredPeripherals) {
-        if (p == peripheral) {
+        if ([[[p identifier] UUIDString] isEqualToString:[[peripheral identifier] UUIDString]]) {
             return YES;
         }
     }
@@ -297,17 +422,11 @@ raft_server_t *raft_server;
 - (void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral
 {
     NSLog(@"Peripheral %@ Connected", peripheral);
-    [self.connectedPeripherals setObject:@[] forKey:peripheral];
+    [self.connectedPeripherals setObject:[[NSMutableDictionary alloc]init] forKey:peripheral];
     [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
-    
-    // Clear the data that we may already have
-    //    [self.data setLength:0];
     
     // Make sure we get the discovery callbacks
     peripheral.delegate = self;
-    
-    // Search only for services that match our UUID
-    //[peripheral discoverServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]];
 }
 
 /** The Transfer Service was discovered
@@ -337,26 +456,23 @@ raft_server_t *raft_server;
         [self cleanup:peripheral];
         return;
     }
-    
-    NSMutableArray *characs = [[NSMutableArray alloc]init];
+    NSMutableDictionary *dict = [self.connectedPeripherals objectForKey:peripheral];
     
     // Again, we loop through the array, just in case.
     for (CBCharacteristic *characteristic in service.characteristics) {
         NSLog(@"Discovered characteristic %@", characteristic);
-        [characs addObject:characteristic];
+        [dict setObject:characteristic forKey:characteristic.UUID];
         if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]]) {
             [peripheral setNotifyValue:YES forCharacteristic:characteristic];
         }
     }
-    
-    // Save all the characteristics for this peripheral
-    [self.connectedPeripherals setObject:characs forKey:peripheral];
 }
 
 /** This callback lets us know more data has arrived via notification on the characteristic
  */
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
 {
+    NSLog(@"didUpdateValueForCharacteristic: %@", characteristic);
     if (error) {
         NSLog(@"Error discovering characteristics: %@", [error localizedDescription]);
         return;
@@ -365,11 +481,11 @@ raft_server_t *raft_server;
     // Right now we know that we are just getting coordinates...
     // |_ x coor _ | _ y coor _ | 8 bytes
     
-    float coors[2];
+    /*float coors[2];
     [characteristic.value getBytes:coors length:8];
  
     CGPoint point = CGPointMake(coors[0], coors[1]);
-    [self.scene drawTouch:point];
+    [self.scene drawTouch:point];*/
 }
 
 /** Once the disconnection happens, we need to clean up our local copy of the peripheral

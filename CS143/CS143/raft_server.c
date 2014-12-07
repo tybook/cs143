@@ -542,7 +542,7 @@ void raft_send_appendentries_all(raft_server_t* me_)
 }
 
 void raft_set_configuration(raft_server_t* me_,
-                            raft_node_configuration_t* nodes, int my_idx)
+                            raft_node_configuration_t* nodes)
 {
     raft_server_private_t* me = (void*)me_;
     int num_nodes;
@@ -556,7 +556,6 @@ void raft_set_configuration(raft_server_t* me_,
         me->nodes[num_nodes-1] = raft_node_new(nodes->udata_address);
     }
     me->votes_for_me = calloc(num_nodes, sizeof(int));
-    me->nodeid = my_idx;
 }
 
 int raft_get_nvotes_for_me(raft_server_t* me_)

@@ -14,13 +14,12 @@
 typedef struct {
     /** The ID that this node used to have.
      * So that we can tell which nodes were removed/added when the
-     * configuration changes */
-    int old_id;
+     * configuration changes 
+     * NOTE: not needed now because we don't support configuration changes */
+    //int old_id;
     
     /** User data pointer for addressing.
-     * Examples of what this could be:
-     * - void* pointing to implementor's networking data
-     * - a (IP,Port) tuple */
+     * This is the UUID of the peripheral */
     void* udata_address;
 } raft_node_configuration_t;
 
@@ -276,10 +275,9 @@ void raft_set_callbacks(raft_server_t* me, raft_cbs_t* funcs, void* udata);
 
 /**
  * Set configuration
- * @param nodes Array of nodes. End of array is marked by NULL entry
- * @param my_idx Index of the node that refers to this Raft server */
+ * @param nodes Array of nodes. End of array is marked by NULL entry */
 void raft_set_configuration(raft_server_t* me_,
-                            raft_node_configuration_t* nodes, int my_idx);
+                            raft_node_configuration_t* nodes);
 
 /**
  * Set election timeout

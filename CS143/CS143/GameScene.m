@@ -29,9 +29,11 @@ GameViewController *gameView;
 
 -(void)startGame
 {
-    // Tell every other device to start?
+    // Set the raft configuration and start raft_periodic
+    // This will send RequestVote messages, so other devices will
+    // know that someone has started the game
+    [self.gameView raft_start];
     
-    // Start raft_periodic
     
     // hide the start button and show the clear button
     self.resetButton.hidden = NO;
@@ -41,7 +43,7 @@ GameViewController *gameView;
 
 -(void)handleConnected: (NSUInteger) numConnected
 {
-    self.connectedLabel.text = [NSString stringWithFormat:@"%lu Connected", numConnected];
+    self.connectedLabel.text = [NSString stringWithFormat:@"%lu Connected", (unsigned long)numConnected];
 }
 
 -(void)didMoveToView:(SKView *)view {

@@ -13,9 +13,12 @@
 
 @interface GameViewController : UIViewController
 
-@property (assign, nonatomic) bool raft_periodic_started;
-
 - (void)proposeData:(NSData *) data;
-- (void)raft_start_periodic;
+
+/* Set up the raft configuration based on the currently connected devices.
+   Start periodic calls to update raft state */
+- (void)raft_start;
+
+//+ (id) sharedController;
 
 @end
