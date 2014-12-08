@@ -245,6 +245,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
     CGPoint p;
     p.x = entry.data[0];
     p.y = entry.data[1];
+    NSLog(@"actually drawing the point: %f, %f", p.x, p.y);
     [pScene drawTouch:p];
     return 1;
 }

@@ -12,8 +12,8 @@
  * @version 0.1
  */
 
-#define REQUEST_TIMEOUT 2000 //200
-#define ELECTION_TIMEOUT 10000 //1000
+#define REQUEST_TIMEOUT 200
+#define ELECTION_TIMEOUT 1000
 
 enum {
     RAFT_STATE_NONE,
@@ -47,7 +47,7 @@ typedef struct {
     /* follower/leader/candidate indicator */
     int state;
     
-    /* most recently append idx, also indicates size of log */
+    /* next open index in our log, also indicates size of the log */
     int current_idx;
     
     /* amount of time left till timeout */

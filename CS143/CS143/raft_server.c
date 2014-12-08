@@ -50,6 +50,8 @@ raft_server_t* raft_new(int nodeid)
     me->current_term = 0;
     me->voted_for = -1;
     me->current_idx = 0;
+    me->commit_idx = -1;
+    me->last_applied_idx = -1;
     me->timeout_elapsed = 0;
     me->request_timeout = REQUEST_TIMEOUT;
     me->election_timeout = ELECTION_TIMEOUT;
@@ -191,18 +193,21 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     raft_server_private_t* me = (void*)me_;
     raft_node_t* p;
     
-    __log(me_, "received appendentries response from: %d", node);
-    
-    __log(me_, "success: %d current_idx %d first_idx %d");
+    __log(me_, "RECEIVED APPENDENTRIES RESPONSE FROM: %d", node);
+    __log(me_, "success %d", r->success);
+    __log(me_, "current_idx %d", r->current_idx);
+    __log(me_, "first_idx %d", r->first_idx);
     
     p = raft_get_node(me_, node);
+    
+    // 2 == r->success if it was a duplicate
     
     if (1 == r->success)
     {
         int i;
         
-        for (i=r->first_idx; i<=r->current_idx; i++) {
-            __log(me_, "marking node as committed");
+        for (i=r->first_idx; i<r->current_idx; i++) {
+            __log(me_, "marking index %d as committed", i);
             log_mark_node_has_committed(me->log, i);
         }
 
@@ -215,6 +220,9 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             e = log_get_from_idx(me->log, me->last_applied_idx + 1);
             
             /* majority has this */
+            if (e)
+                __log(me_, "entry %d has %d commits", me->last_applied_idx + 1,
+                    e->num_nodes);
             if (e && me->num_nodes / 2 <= e->num_nodes)
             {
                 if (0 == raft_apply_entry(me_)) break;
@@ -225,7 +233,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             }
         }
     }
-    else
+    else if (r->success == 0)
     {
         /* If AppendEntries fails because of log inconsistency:
          decrement nextIndex and retry (§5.3) */
@@ -246,7 +254,13 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     
     me->timeout_elapsed = 0;
     
-    __log(me_, "received appendentries from: %d", node);
+    __log(me_, "RECEIVED APPENDENTRIES FROM: %d", node);
+    __log(me_, "term %d", ae->term);
+    __log(me_, "leader_id %d", ae->leader_id);
+    __log(me_, "prev_log_idx %d", ae->prev_log_idx);
+    __log(me_, "prev_log_term %d", ae->prev_log_term);
+    __log(me_, "n_entries %d", ae->n_entries);
+    __log(me_, "leader_commit %d", ae->leader_commit);
     
     r.term = me->current_term;
     
@@ -261,6 +275,12 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
         r.success = 0;
         goto done;
     }
+    
+    // TODO! Need some kind of duplicate detection so we don't apply the same
+    // entry more than once (if master sends two identical appendentries
+    // messages before getting the first response
+    // but we don't want to compromise the need for the master to overwrite
+    // the log entries of the follower
     
 #if 0
     if (-1 != ae->prev_log_idx &&
@@ -294,7 +314,8 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
             raft_entry_t* e2;
             if ((e2 = raft_get_entry_from_idx(me_, ae->prev_log_idx+1)))
             {
-                log_delete(me->log, ae->prev_log_idx+1);
+                if (e2->term != ae->term)
+                    log_delete(me->log, ae->prev_log_idx+1);
             }
         }
         else
@@ -308,14 +329,14 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     
     /* 5. If leaderCommit > commitIndex, set commitIndex =
      min(leaderCommit, last log index) */
-    if (raft_get_commit_idx(me_) < ae->leader_commit)
+    int myCommitIndex = raft_get_commit_idx(me_);
+    if (myCommitIndex < ae->leader_commit)
     {
-        raft_entry_t* e;
+        int newCommitIndex = me->current_idx - 1 < ae->leader_commit ?
+            me->current_idx - 1 : ae->leader_commit;
         
-        if ((e = log_peektail(me->log)))
-        {
-            raft_set_commit_idx(me_, e->entry.id < ae->leader_commit ?
-                                e->entry.id : ae->leader_commit);
+        if (newCommitIndex > myCommitIndex) {
+            raft_set_commit_idx(me_, newCommitIndex);
             while (1 == raft_apply_entry(me_));
         }
     }
@@ -325,25 +346,26 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     
     raft_set_current_term(me_, ae->term);
     
-    int i;
-    
-    // append all entries to log
+    // append all entries to log if we don't have them already
     // NOTE: for now it is always just 1
-    for (i=0; i<ae->n_entries; i++)
-    {
-        msg_entry_t cmd;
-        raft_entry_t* c;
-        
-        cmd = ae->entry;
+    msg_entry_t cmd = ae->entry;
+    raft_entry_t* c;
+    
+    if (ae->n_entries == 1) {
+        if (raft_get_current_idx(me_) >  ae->prev_log_idx + 1) {
+            __log(me_, "AE got duplicate message");
+            r.success = 2;
+            goto done;
+        }
         
         /* TODO: replace malloc with mempoll/arena */
         c = malloc(sizeof(raft_entry_t));
         c->term = me->current_term;
         c->entry = cmd;
         /*c->len = cmd->len;
-        c->id = cmd->id;
-        c->data = malloc(cmd->len);
-        memcpy(c->data, cmd->data, cmd->len);*/
+         c->id = cmd->id;
+         c->data = malloc(cmd->len);
+         memcpy(c->data, cmd->data, cmd->len);*/
         if (0 == raft_append_entry(me_, c))
         {
             __log(me_, "AE failure; couldn't append entry");
@@ -352,11 +374,19 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
         }
     }
     
+
     r.success = 1;
+    // If n_entries == 1, first_idx == current_idx
+    // otherwise first_idx + 1 == current_idx
     r.current_idx = raft_get_current_idx(me_);
     r.first_idx = ae->prev_log_idx + 1;
     
 done:
+    __log(me_, "SENDING APPENDENTRIES RESPONSE to %d", node);
+    __log(me_, "term: %d", r.term);
+    __log(me_, "success: %d", r.success);
+    __log(me_, "current_idx: %d", r.current_idx);
+    __log(me_, "first_idx: %d", r.first_idx);
     if (me->cb.send_appendentries_response)
         me->cb.send_appendentries_response(me_, me->udata, node, &r);
     return 1;
@@ -457,10 +487,11 @@ int raft_recv_entry(raft_server_t* me_, int node, msg_entry_t* e)
     raft_entry_t ety;
     int res, i;
     
-    __log(me_, "received entry from: %d", node);
+    __log(me_, "RECEVIED ENTRY FROM: %d", node);
     
     ety.term = me->current_term;
     ety.entry = *e;
+    ety.num_nodes = 0;
 /*    ety.id = e->id;
     ety.data = e->data;
     ety.len = e->len; */
@@ -501,11 +532,10 @@ int raft_append_entry(raft_server_t* me_, raft_entry_t* c)
     
     if (1 == log_append_entry(me->log,c))
     {
-        __log(me_, "incrementing current_idx");
+        __log(me_, "appended entry to log: %d", me->current_idx);
         me->current_idx += 1;
         return 1;
     }
-    __log(me_, "NOT incrementing current_idx because log_appeng_entry failed");
     return 0;
 }
 
@@ -517,7 +547,7 @@ int raft_apply_entry(raft_server_t* me_)
     if (!(e = log_get_from_idx(me->log, me->last_applied_idx+1)))
         return 0;
     
-    __log(me_, "applying log: %d", me->last_applied_idx);
+    __log(me_, "APPLYING LOG: %d", me->last_applied_idx + 1);
     
     me->last_applied_idx++;
     if (me->commit_idx < me->last_applied_idx)
@@ -542,7 +572,6 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     ae.leader_commit = me->commit_idx;
     int node_next_idx = raft_node_get_next_idx(p);
     ae.prev_log_idx = node_next_idx - 1;
-    __log(me_, "me->current_idx %d node_next_idx %d", me->current_idx, node_next_idx);
     if (ae.prev_log_idx != -1) {
         raft_entry_t *entry = log_get_from_idx(me->log, ae.prev_log_idx);
         ae.prev_log_term = entry->term;
@@ -560,13 +589,22 @@ void raft_send_appendentries(raft_server_t* me_, int node)
         ae.n_entries = 0;
     }
     
-    __log(me_, "sending appendentries to: %d; prev_log_idx: %d prev_log_term %d nentries %d",
-          node, ae.prev_log_idx, ae.prev_log_term, ae.n_entries);
-    
+    // This should not be here, but just making sure id is not wrong
+    // REMOVE AFTER TESTING with 1 touch
     if (ae.n_entries == 1) {
         ae.entry.id = 1;
-        __log(me_, "sending entry with id: %d", ae.entry.id);
     }
+    
+    __log(me_, "SENDING APPENDENTRIES TO: %d", node);
+    __log(me_, "current_idx %d", me->current_idx);
+    __log(me_, "node_next_idx %d", node_next_idx);
+    
+    __log(me_, "term %d", ae.term);
+    __log(me_, "leader_id %d", ae.leader_id);
+    __log(me_, "prev_log_idx %d", ae.prev_log_idx);
+    __log(me_, "prev_log_term %d", ae.prev_log_term);
+    __log(me_, "n_entries %d", ae.n_entries);
+    __log(me_, "leader_commit %d", ae.leader_commit);
     
     if (me->cb.send_appendentries)
         me->cb.send_appendentries(me_, me->udata, node, &ae);

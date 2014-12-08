@@ -30,10 +30,13 @@ typedef struct
     int count;
     
     /* position of the queue */
-    int front, back;
+    // we can just look at count because we aren't doing log compaction
+    //int front, back;
+    
     
     /* we compact the log, and thus need to increment the base idx */
-    int base_log_idx;
+    // actually you DONT do log compaction...
+    //int base_log_idx;
     
     raft_entry_t* entries;
 } log_private_t;
@@ -49,21 +52,13 @@ static void __ensurecapacity(
         return;
     
     temp = calloc(1,sizeof(raft_entry_t) * me->size * 2);
-    
-    for (i = 0, j = me->front; i < me->count; i++, j++)
-    {
-        if (j == me->size)
-            j = 0;
-        memcpy(&temp[i], &me->entries[j], sizeof(raft_entry_t));
-    }
+    memcpy(temp, me->entries, sizeof(raft_entry_t)*me->count);
     
     me->size *= 2;
-    me->entries = temp;
-    me->front = 0;
-    me->back = me->count;
-    
     /* clean up old entries */
     free(me->entries);
+    
+    me->entries = temp;
 }
 
 log_t* log_new()
@@ -73,7 +68,6 @@ log_t* log_new()
     me = calloc(1,sizeof(log_private_t));
     me->size = INITIAL_CAPACITY;
     me->count = 0;
-    me->back = in(me)->front = 0;
     me->entries = calloc(1,sizeof(raft_entry_t) * me->size);
     return (void*)me;
 }
@@ -82,18 +76,14 @@ int log_append_entry(log_t* me_, raft_entry_t* c)
 {
     log_private_t* me = (void*)me_;
     
-    if (0 == c->entry.id)
-        return 0;
+    //if (0 == c->entry.id)
+    //    return 0;
     
     __ensurecapacity(me);
     
-    //    if (hashmap_get(me->log_map, (void*)c->id+1))
-    //        return 0;
-    
-    memcpy(&me->entries[me->back],c,sizeof(raft_entry_t));
-    me->entries[me->back].num_nodes = 0;
+    memcpy(&me->entries[me->count],c,sizeof(raft_entry_t));
+    me->entries[me->count].num_nodes = 0;
     me->count++;
-    me->back++;
     return 1;
 }
 
@@ -102,13 +92,10 @@ raft_entry_t* log_get_from_idx(log_t* me_, int idx)
     log_private_t* me = (void*)me_;
     int i;
     
-    if (me->base_log_idx + me->count < idx || idx < me->base_log_idx)
+    if (me->count <= idx)
         return NULL;
     
-    /* idx starts at 1 */
-    idx -= 1;
-    i = (me->front + idx - me->base_log_idx) % me->size;
-    return &me->entries[i];
+    return &me->entries[idx];
 }
 
 int log_count(log_t* me_)
@@ -117,39 +104,14 @@ int log_count(log_t* me_)
     return me->count;
 }
 
+// TODO! check the caller of this and make sure im doing the right thing...
 void log_delete(log_t* me_, int idx)
 {
     log_private_t* me = (void*)me_;
-    int end, i;
-    
-    /* idx starts at 1 */
-    idx -= 1;
-    idx -= me->base_log_idx;
-    
-    for (end = log_count(me_); idx<end; idx++)
-    {
-        me->back--;
-        me->count--;
-    }
-    
-#if 0
-    const void *elem;
-    
-    if (arrayqueue_is_empty(me))
-        return NULL;
-    
-    //    __checkwrapping(me);
-    in(me)->back--;
-    in(me)->count--;
-    if (-1 == in(me)->back)
-        in(me)->back = in(me)->size;
-    elem = me->entries[in(me)->back];
-    
-    return (void *) elem;
-#endif
+    me->count = idx;
 }
 
-void *log_poll(log_t * me_)
+/*void *log_poll(log_t * me_)
 {
     log_private_t* me = (void*)me_;
     const void *elem;
@@ -161,29 +123,21 @@ void *log_poll(log_t * me_)
     me->count--;
     me->base_log_idx++;
     return (void *) elem;
-}
+}*/
 
 raft_entry_t *log_peektail(log_t * me_)
 {
     log_private_t* me = (void*)me_;
-    const void *elem;
-    int i;
     
-    if (0 == log_count(me_))
+    if (0 == me->count)
         return NULL;
     
-    if (0 == me->back)
-        return &me->entries[me->size-1];
-    else
-        return &me->entries[me->back-1];
+    return &me->entries[me->count - 1];
 }
 
 void log_empty(log_t * me_)
 {
     log_private_t* me = (void*)me_;
-    
-    me->front = 0;
-    me->back = 0;
     me->count = 0;
 }
 
