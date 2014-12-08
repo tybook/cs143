@@ -72,7 +72,7 @@ typedef struct {
     int prev_log_idx;
     int prev_log_term;
     int n_entries;
-    msg_entry_t* entries;
+    msg_entry_t entry;
     int leader_commit;
 } msg_appendentries_t;
 

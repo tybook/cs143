@@ -49,7 +49,7 @@ raft_server_t* raft_new(int nodeid)
     
     me->current_term = 0;
     me->voted_for = -1;
-    me->current_idx = 1;
+    me->current_idx = 0;
     me->timeout_elapsed = 0;
     me->request_timeout = REQUEST_TIMEOUT;
     me->election_timeout = ELECTION_TIMEOUT;
@@ -199,8 +199,11 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     {
         int i;
         
-        for (i=r->first_idx; i<=r->current_idx; i++)
+        for (i=r->first_idx; i<=r->current_idx; i++) {
             log_mark_node_has_committed(me->log, i);
+        }
+
+        raft_node_set_next_idx(p, r->current_idx);
         
         while (1)
         {
@@ -267,7 +270,7 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
 #endif
     
     /* not the first appendentries we've received */
-    if (0 != ae->prev_log_idx)
+    if (-1 != ae->prev_log_idx)
     {
         raft_entry_t* e;
         
@@ -321,18 +324,19 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     
     int i;
     
-    /* append all entries to log */
+    // append all entries to log
+    // NOTE: for now it is always just 1
     for (i=0; i<ae->n_entries; i++)
     {
-        msg_entry_t* cmd;
+        msg_entry_t cmd;
         raft_entry_t* c;
         
-        cmd = &ae->entries[i];
+        cmd = ae->entry;
         
         /* TODO: replace malloc with mempoll/arena */
         c = malloc(sizeof(raft_entry_t));
         c->term = me->current_term;
-        c->entry = *cmd;
+        c->entry = cmd;
         /*c->len = cmd->len;
         c->id = cmd->id;
         c->data = malloc(cmd->len);
@@ -533,12 +537,21 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     ae.term = me->current_term;
     ae.leader_id = me->nodeid;
     ae.leader_commit = me->commit_idx;
-
-    // TODO! need to figure out argument passing
-    // also send the actually entry data
-    ae.prev_log_term = raft_node_get_next_idx(p);
-    ae.prev_log_idx = 0;
-    ae.n_entries = 0;
+    int node_next_idx = raft_node_get_next_idx(p);
+    ae.prev_log_idx = node_next_idx - 1;
+    if (ae.prev_log_idx != -1) {
+        raft_entry_t *entry = log_get_from_idx(me->log, ae.prev_log_idx);
+        ae.prev_log_term = entry->term;
+    }
+    
+    if (me->current_idx > node_next_idx) {
+        ae.n_entries = 1;
+        raft_entry_t *next_entry = log_get_from_idx(me->log, node_next_idx);
+        ae.entry = next_entry->entry;
+    }
+    else {
+        ae.n_entries = 0;
+    }
     if (me->cb.send_appendentries)
         me->cb.send_appendentries(me_, me->udata, node, &ae);
 }
