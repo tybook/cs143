@@ -125,6 +125,10 @@ void raft_become_candidate(raft_server_t* me_)
         if (me->nodeid == i) continue;
         raft_send_requestvote(me_, i);
     }
+    
+    /* so that when there is one device only, automatically become master */
+    if (raft_votes_is_majority(me->num_nodes, raft_get_nvotes_for_me(me_)))
+        raft_become_leader(me_);
 }
 
 void raft_become_follower(raft_server_t* me_)
@@ -141,7 +145,7 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
 {
     raft_server_private_t* me = (void*)me_;
     
-    __log(me_, "periodic elapsed time: %d", me->timeout_elapsed);
+    //__log(me_, "periodic elapsed time: %d", me->timeout_elapsed);
     
     switch (me->state)
     {
@@ -229,10 +233,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     return 1;
 }
 
-int raft_recv_appendentries(
-                            raft_server_t* me_,
-                            const int node,
-                            msg_appendentries_t* ae)
+int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentries_t* ae)
 {
     raft_server_private_t* me = (void*)me_;
     msg_appendentries_response_t r;
@@ -378,7 +379,7 @@ int raft_recv_requestvote(raft_server_t* me_, int node, msg_requestvote_t* vr)
         r.vote_granted = 1;
     }
     
-    __log(me_, "node requested vote: %d replying: %s",
+    __log(me_, "node %d requested vote: %s",
           node, r.vote_granted == 1 ? "granted" : "not granted");
     
     r.term = raft_get_current_term(me_);
@@ -403,7 +404,7 @@ int raft_recv_requestvote_response(raft_server_t* me_, int node,
 {
     raft_server_private_t* me = (void*)me_;
     
-    __log(me_, "node responded to requestvote: %d status: %s",
+    __log(me_, "node %d responded to requestvote: %s",
           node, r->vote_granted == 1 ? "granted" : "not granted");
     
     if (raft_is_leader(me_))
@@ -420,6 +421,7 @@ int raft_recv_requestvote_response(raft_server_t* me_, int node,
         
         me->votes_for_me[node] = 1;
         votes = raft_get_nvotes_for_me(me_);
+        __log(me_, "now have %d of %d votes", votes, me->num_nodes);
         if (raft_votes_is_majority(me->num_nodes, votes))
             raft_become_leader(me_);
     }
@@ -456,11 +458,18 @@ int raft_recv_entry(raft_server_t* me_, int node, msg_entry_t* e)
     ety.data = e->data;
     ety.len = e->len; */
     res = raft_append_entry(me_, &ety);
-    raft_send_entry_response(me_, node, e->id, res);
+    // We don't need this because our clients are infused with the raft servers
+    //raft_send_entry_response(me_, node, e->id, res);
     for (i=0; i<me->num_nodes; i++)
     {
         if (me->nodeid == i) continue;
         raft_send_appendentries(me_,i);
+    }
+    
+    // Handle case with 1 server
+    if (me->num_nodes == 1)
+    {
+        raft_apply_entry(me_);
     }
     return 0;
 }
@@ -524,6 +533,7 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     ae.term = me->current_term;
     ae.leader_id = me->nodeid;
     ae.prev_log_term = raft_node_get_next_idx(p);
+    ae.leader_commit = me->commit_idx;
     // TODO:
     ae.prev_log_idx = 0;
     ae.n_entries = 0;

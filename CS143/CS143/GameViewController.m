@@ -10,6 +10,9 @@
 #import "GameScene.h"
 #import "raft.h"
 
+// TODO! bug with 1 device when you get to 23 nodes...
+// http://loufranco.com/blog/understanding-exc_bad_access
+
 @implementation SKScene (Unarchive)
 
 + (instancetype)unarchiveFromFile:(NSString *)file {
@@ -106,9 +109,14 @@ GameScene *pScene;
     msg.id = 1;
     msg.data[0] = point.x;
     msg.data[1] = point.y;
-    NSData *data = [NSData dataWithBytes:&msg length:sizeof(msg_entry_t)];
     
-    [self.peripheralManager updateValue:data forCharacteristic:self.proposeCharacteristic onSubscribedCentrals:nil];
+    if (raft_is_leader(raft_server)) {
+        raft_recv_entry(raft_server, 0, &msg);
+    }
+    else {
+        NSData *data = [NSData dataWithBytes:&msg length:sizeof(msg_entry_t)];
+        [self.peripheralManager updateValue:data forCharacteristic:self.proposeCharacteristic onSubscribedCentrals:nil];
+    }
 }
 
 - (void) raft_call_periodic
@@ -134,7 +142,7 @@ GameScene *pScene;
         // Search only for services that match our UUID
         [peripheral discoverServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]];
     }
-    
+
     // set up the raft configuration with yourself as idx 0
     // keep a dictionary mapping UUID of peripheral to idx in nodes
     NSUInteger numConnected = [[self.connectedPeripherals allKeys] count];
@@ -151,7 +159,7 @@ GameScene *pScene;
     NSNumber *idx = @1;
     for (CBPeripheral *p in [self.connectedPeripherals allKeys]) {
         NSUUID *UUID = [p identifier];
-        /* TODO! I'm not even using any passed in UUID for the configuration nodes */
+        // TODO! I'm not even using any passed in UUID for the configuration nodes
         raft_node_configuration_t node = {(void*)CFBridgingRetain(UUID)};
         nodes[[idx intValue]] = node;
         [self.PeripheralRaftIdxDict setObject:idx forKey:p];
@@ -163,7 +171,6 @@ GameScene *pScene;
     nodes[[idx intValue]] = nodeEnd;
 
     raft_set_configuration(raft_server, nodes);
-    
 
     // periodically update raft state
     [NSTimer scheduledTimerWithTimeInterval:RAFT_PERIODIC_SEC
@@ -204,6 +211,7 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
 /* Write to own RAFT_TO_CANDIDATE characteristic */
 int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_requestvote_response_t* msg)
 {
+    NSLog(@"writing to own RAFT_TO_CANDIDATE characterisitic");
     NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_response_t)];
     [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCandidateCharacteristic onSubscribedCentrals:nil];
     return 1;
@@ -211,6 +219,7 @@ int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_re
 
 /* Write to RAFT_FROM_CENTRAL characterisitic of peer */
 // TODO! make sure all these structs are not too big. How much room do we have?
+// maximumUpdateValueLength
 int send_appendentries(raft_server_t* raft, void* udata, int peer, msg_appendentries_t* msg)
 {
     CBPeripheral *p;
@@ -278,10 +287,11 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
     self.PeripheralRaftIdxDict = [[NSMutableDictionary alloc]init];
     pConnectedPeripherals = self.connectedPeripherals;
     pPeripheralRaftIdxDict = self.PeripheralRaftIdxDict;
-    pPeripheralManager = self.peripheralManager;
     
     // Start up the CBPeripheralManager
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
+    pPeripheralManager = self.peripheralManager;
+
     
     // Start up the CBCentralManager
     //dispatch_queue_t centralQueue = dispatch_queue_create("centralQueue", DISPATCH_QUEUE_SERIAL);
@@ -403,9 +413,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
     CBCharacteristic* charac = request.characteristic;
 
     if([charac.UUID isEqual: [CBUUID UUIDWithString: RAFT_FROM_CANDIDATE_CHAR_UUID]])
-    {
-        NSLog(@"Got message from candidate for election");
-        
+    {        
         /* We need to get the node number for the central that made the request.
             We can get a CBCentral but this won't equal the CBPeripheral we store
             in our dictionaries. Unless we make changes, we have to enumerate the dictionary
@@ -424,9 +432,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
         }
     }
     else if ([charac.UUID isEqual:[CBUUID UUIDWithString:RAFT_FROM_CENTRAL_CHAR_UUID]])
-    {
-        NSLog(@"Got message from master");
-        
+    {        
         int node = -1;
         NSString *uuid = [[request.central identifier] UUIDString];
         for (CBPeripheral *p in self.connectedPeripherals) {
@@ -543,7 +549,9 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
     for (CBCharacteristic *characteristic in service.characteristics) {
         NSLog(@"Discovered characteristic %@", characteristic);
         [dict setObject:characteristic forKey:characteristic.UUID];
-        if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]]) {
+        if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]] ||
+            [characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_TO_CANDIDATE_CHAR_UUID]] ||
+            [characteristic.UUID isEqual:[CBUUID UUIDWithString:RAFT_TO_CENTRAL_CHAR_UUID]]) {
             [peripheral setNotifyValue:YES forCharacteristic:characteristic];
         }
     }
@@ -557,8 +565,6 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
         NSLog(@"Error discovering characteristics: %@", [error localizedDescription]);
         return;
     }
-
-    NSLog(@"didUpdateValueForCharacteristic: %@", characteristic);
 
     // IF THIS UPDATE HAS US AS THE TARGET...
     // CBDescriptor maybe?
@@ -594,15 +600,6 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
         int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
         raft_recv_entry(raft_server, node, &msg);
     }
-    
-    // Right now we know that we are just getting coordinates...
-    // |_ x coor _ | _ y coor _ | 8 bytes
-    
-    /*float coors[2];
-    [characteristic.value getBytes:coors length:8];
- 
-    CGPoint point = CGPointMake(coors[0], coors[1]);
-    [self.scene drawTouch:point];*/
 }
 
 /** Once the disconnection happens, we need to clean up our local copy of the peripheral
