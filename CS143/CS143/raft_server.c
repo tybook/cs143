@@ -532,9 +532,11 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     
     ae.term = me->current_term;
     ae.leader_id = me->nodeid;
-    ae.prev_log_term = raft_node_get_next_idx(p);
     ae.leader_commit = me->commit_idx;
-    // TODO:
+
+    // TODO! need to figure out argument passing
+    // also send the actually entry data
+    ae.prev_log_term = raft_node_get_next_idx(p);
     ae.prev_log_idx = 0;
     ae.n_entries = 0;
     if (me->cb.send_appendentries)
