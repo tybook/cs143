@@ -45,8 +45,8 @@
 @property (strong, nonatomic) CBMutableCharacteristic   *toCentralCharacteristic;
 @property (strong, nonatomic) CBMutableCharacteristic   *fromCentralCharacteristic;
 /* Leader election */
-@property (strong, nonatomic) CBMutableCharacteristic   *toLeaderCharacteristic;
-@property (strong, nonatomic) CBMutableCharacteristic   *fromLeaderCharacteristic;
+@property (strong, nonatomic) CBMutableCharacteristic   *toCandidateCharacteristic;
+@property (strong, nonatomic) CBMutableCharacteristic   *fromCandidateCharacteristic;
 /* Client proposals of data */
 @property (strong, nonatomic) CBMutableCharacteristic   *proposeCharacteristic;
 
@@ -64,14 +64,17 @@ raft_server_t *raft_server;
  use ARC for me, so I just keep global references to the instance variables...ew */
 NSMutableDictionary *pConnectedPeripherals;
 NSMutableDictionary *pPeripheralRaftIdxDict;
-
+CBPeripheralManager *pPeripheralManager;
+CBMutableCharacteristic *pToCandidateCharacteristic;
+CBMutableCharacteristic *pToCentralCharacteristic;
+GameScene *pScene;
 
 
 #define RAFT_SERVICE_UUID                      @"698C6448-C9A4-4CAC-A30A-D33F3AF25330"
 #define RAFT_TO_CENTRAL_CHAR_UUID              @"F6ACB6F5-04C5-441C-A5AF-12129B550E58"
 #define RAFT_FROM_CENTRAL_CHAR_UUID            @"02E6CA47-2D9E-4A09-8117-34D1545715DA"
-#define RAFT_TO_CANDIDATE_ELECTION_CHAR_UUID   @"C1224A79-4715-4FFB-B43F-EA2B425EDD98"
-#define RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
+#define RAFT_TO_CANDIDATE_CHAR_UUID   @"C1224A79-4715-4FFB-B43F-EA2B425EDD98"
+#define RAFT_FROM_CANDIDATE_CHAR_UUID @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
 #define RAFT_PROPOSE_CHAR_UUID                 @"6A401949-869B-4DAF-9E75-2FFEF411EDEE"
 
 #define RAFT_PERIODIC_SEC                   0.01
@@ -96,6 +99,18 @@ NSMutableDictionary *pPeripheralRaftIdxDict;
     return self;
 }*/
 
+-(void)proposeData:(CGPoint)point
+{
+    msg_entry_t msg;
+    // TODO! Make a unique id composed of an incrementing counter and the unique identifier of the device
+    msg.id = 1;
+    msg.data[0] = point.x;
+    msg.data[1] = point.y;
+    NSData *data = [NSData dataWithBytes:&msg length:sizeof(msg_entry_t)];
+    
+    [self.peripheralManager updateValue:data forCharacteristic:self.proposeCharacteristic onSubscribedCentrals:nil];
+}
+
 - (void) raft_call_periodic
 {
     raft_periodic(raft_server, RAFT_PERIODIC_SEC * 1000);
@@ -103,7 +118,8 @@ NSMutableDictionary *pPeripheralRaftIdxDict;
 
 - (void) raft_start
 {
-    assert(!self.raft_started);
+    if (self.raft_started)
+        return;
     self.raft_started = YES;
     
     // No need to advertise and scan anymore as the game has started
@@ -135,6 +151,7 @@ NSMutableDictionary *pPeripheralRaftIdxDict;
     NSNumber *idx = @1;
     for (CBPeripheral *p in [self.connectedPeripherals allKeys]) {
         NSUUID *UUID = [p identifier];
+        /* TODO! I'm not even using any passed in UUID for the configuration nodes */
         raft_node_configuration_t node = {(void*)CFBridgingRetain(UUID)};
         nodes[[idx intValue]] = node;
         [self.PeripheralRaftIdxDict setObject:idx forKey:p];
@@ -156,23 +173,71 @@ NSMutableDictionary *pPeripheralRaftIdxDict;
                                     repeats:YES];
 }
 
-int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote_t* msg)
+CBCharacteristic *getCharacterisitic(int peer, NSString *charUUID, CBPeripheral **retP)
 {
+    // Get the peripheral with the given index
     CBPeripheral *p = pPeripheralRaftIdxDict[[NSNumber numberWithInt:peer]];
+    *retP = p;
     
-    // Write the msg to the right characteristic
-    CBUUID *characUUID = [CBUUID UUIDWithString:RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID];
+    // Get the right characteristic
     NSMutableDictionary *characs = pConnectedPeripherals[p];
     if (characs) {
-        CBCharacteristic *charac = characs[characUUID];
-        if (charac) {
-            NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_t)];
-            NSLog(@"Writing value for characteristic %@", charac);
-            [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
-            return 1;
-        }
+        CBCharacteristic *charac = characs[[CBUUID UUIDWithString:charUUID]];
+        return charac;
+    }
+    return NULL;
+}
+
+/* Write to RAFT_FROM_CANDIDATE characterisitic of peer */
+int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote_t* msg)
+{
+    CBPeripheral *p;
+    CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CANDIDATE_CHAR_UUID, &p);
+    if (charac) {
+        NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_t)];
+        [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
+        return 1;
     }
     return 0;
+}
+
+/* Write to own RAFT_TO_CANDIDATE characteristic */
+int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_requestvote_response_t* msg)
+{
+    NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_response_t)];
+    [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCandidateCharacteristic onSubscribedCentrals:nil];
+    return 1;
+}
+
+/* Write to RAFT_FROM_CENTRAL characterisitic of peer */
+// TODO! make sure all these structs are not too big. How much room do we have?
+int send_appendentries(raft_server_t* raft, void* udata, int peer, msg_appendentries_t* msg)
+{
+    CBPeripheral *p;
+    CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CENTRAL_CHAR_UUID, &p);
+    if (charac) {
+        NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_appendentries_t)];
+        [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
+        return 1;
+    }
+    return 0;
+}
+
+/* Write to own RAFT_TO_CENTRAL characteristic */
+int send_appendentries_response(raft_server_t* raft, void* udata, int peer, msg_appendentries_response_t* msg)
+{
+    NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_appendentries_response_t)];
+    [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCentralCharacteristic onSubscribedCentrals:nil];
+    return 1;
+}
+
+int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
+{
+    CGPoint p;
+    p.x = entry.data[0];
+    p.y = entry.data[1];
+    [pScene drawTouch:p];
+    return 1;
 }
 
 - (void)viewDidLoad
@@ -189,6 +254,7 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
     // Create and configure the scene.
     self.scene = [GameScene unarchiveFromFile:@"GameScene"];
     self.scene.scaleMode = SKSceneScaleModeAspectFill;
+    pScene = self.scene;
     
     // create a new raft server
     raft_server = raft_new(0);
@@ -196,7 +262,11 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
     NSLog(@"UUID: %@", [ownUUID UUIDString]);
     
     raft_cbs_t funcs = {
-        .send_requestvote = send_requestvote
+        .send_requestvote = send_requestvote ,
+        .send_requestvote_response = send_requestvote_response ,
+        .send_appendentries = send_appendentries ,
+        .send_appendentries_response = send_appendentries_response ,
+        .applylog = applylog
     };
     
     /* don't think we need the passed in udata to this function */
@@ -208,6 +278,7 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
     self.PeripheralRaftIdxDict = [[NSMutableDictionary alloc]init];
     pConnectedPeripherals = self.connectedPeripherals;
     pPeripheralRaftIdxDict = self.PeripheralRaftIdxDict;
+    pPeripheralManager = self.peripheralManager;
     
     // Start up the CBPeripheralManager
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
@@ -257,16 +328,6 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
 
 #pragma mark - Peripheral Methods
 
-/** Client app proposing data to central (max of 12 bytes of data)
- */
-- (void)proposeData:(NSData *)data
-{
-    // if we are the master ...
-    
-    // otherwise
-    [self.peripheralManager updateValue:data forCharacteristic:self.proposeCharacteristic onSubscribedCentrals:nil];
-}
-
 /** Required protocol method.  A full app should take care of all the possible states,
  *  but we're just waiting to know when the CBPeripheralManager is ready
  */
@@ -284,12 +345,14 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
                                     properties:CBCharacteristicPropertyNotify|CBCharacteristicPropertyRead
                                     value:nil
                                     permissions:CBAttributePermissionsReadable];
+    pToCentralCharacteristic = self.toCentralCharacteristic;
     
-    self.toLeaderCharacteristic = [[CBMutableCharacteristic alloc]
-                                   initWithType:[CBUUID UUIDWithString:RAFT_TO_CANDIDATE_ELECTION_CHAR_UUID]
+    self.toCandidateCharacteristic = [[CBMutableCharacteristic alloc]
+                                   initWithType:[CBUUID UUIDWithString:RAFT_TO_CANDIDATE_CHAR_UUID]
                                    properties:CBCharacteristicPropertyNotify|CBCharacteristicPropertyRead
                                    value:nil
                                    permissions:CBAttributePermissionsReadable];
+    pToCandidateCharacteristic = self.toCandidateCharacteristic;
     
     self.proposeCharacteristic = [[CBMutableCharacteristic alloc]
                                   initWithType:[CBUUID UUIDWithString:RAFT_PROPOSE_CHAR_UUID]
@@ -303,8 +366,8 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
                                       value:nil
                                       permissions:CBAttributePermissionsWriteable];
     
-    self.fromLeaderCharacteristic = [[CBMutableCharacteristic alloc]
-                                     initWithType:[CBUUID UUIDWithString:RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID]
+    self.fromCandidateCharacteristic = [[CBMutableCharacteristic alloc]
+                                     initWithType:[CBUUID UUIDWithString:RAFT_FROM_CANDIDATE_CHAR_UUID]
                                      properties:CBCharacteristicPropertyWriteWithoutResponse
                                      value:nil
                                      permissions:CBAttributePermissionsWriteable];
@@ -315,7 +378,7 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
     
     // Add the characteristic to the service
     transferService.characteristics = @[self.toCentralCharacteristic, self.fromCentralCharacteristic,
-                                        self.toLeaderCharacteristic, self.fromLeaderCharacteristic,
+                                        self.toCandidateCharacteristic, self.fromCandidateCharacteristic,
                                         self.proposeCharacteristic];
     
     // And add it to the peripheral manager
@@ -331,7 +394,7 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
 {
     /* If this is the first request, start up the raft server */
     if (!self.raft_started) {
-        [self raft_start];
+        [self.scene startGame];
     }
     
     /* TODO! loop through all the requests, not just the first one */
@@ -339,7 +402,7 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
     NSData* request_data = request.value;
     CBCharacteristic* charac = request.characteristic;
 
-    if([charac.UUID isEqual: [CBUUID UUIDWithString: RAFT_FROM_CANDIDATE_ELECTION_CHAR_UUID]])
+    if([charac.UUID isEqual: [CBUUID UUIDWithString: RAFT_FROM_CANDIDATE_CHAR_UUID]])
     {
         NSLog(@"Got message from candidate for election");
         
@@ -359,6 +422,24 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
             [request_data getBytes:&requestvote length:sizeof(msg_requestvote_t)];
             raft_recv_requestvote(raft_server, node, &requestvote);
         }
+    }
+    else if ([charac.UUID isEqual:[CBUUID UUIDWithString:RAFT_FROM_CENTRAL_CHAR_UUID]])
+    {
+        NSLog(@"Got message from master");
+        
+        int node = -1;
+        NSString *uuid = [[request.central identifier] UUIDString];
+        for (CBPeripheral *p in self.connectedPeripherals) {
+            if ([uuid isEqualToString:[[p identifier] UUIDString]]) {
+                node = [self.PeripheralRaftIdxDict[p] intValue];
+            }
+        }
+        msg_appendentries_t appendEntries;
+        if (node != -1) {
+            [request_data getBytes:&appendEntries length:sizeof(msg_appendentries_t)];
+            raft_recv_appendentries(raft_server, node, &appendEntries);
+        }
+
     }
 }
 
@@ -472,10 +553,46 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
  */
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error
 {
-    NSLog(@"didUpdateValueForCharacteristic: %@", characteristic);
     if (error) {
         NSLog(@"Error discovering characteristics: %@", [error localizedDescription]);
         return;
+    }
+
+    NSLog(@"didUpdateValueForCharacteristic: %@", characteristic);
+
+    // IF THIS UPDATE HAS US AS THE TARGET...
+    // CBDescriptor maybe?
+    
+    if([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_TO_CANDIDATE_CHAR_UUID]]) {
+        // TODO: WAIT! We need some way to know who this vote is for. If it just says voted granted,
+        // then multiple candidates at the same time will get alerted of the written value and
+        // then we fooked when both think they got the vote
+        msg_requestvote_response_t voteResponse;
+        [characteristic.value getBytes:&voteResponse length:sizeof(msg_requestvote_response_t)];
+        int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
+        raft_recv_requestvote_response(raft_server, node, &voteResponse);
+    }
+    else if ([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_TO_CENTRAL_CHAR_UUID]]) {
+        // We should make sure this is targeted for us. This can be done by checking to see if we are the master
+        // This is safe because raft guarantees there can't be more than one master. But we still have the issue
+        // with candidate votes that must be addressed
+        msg_appendentries_response_t appendEntriesResponse;
+        [characteristic.value getBytes:&appendEntriesResponse length:sizeof(msg_appendentries_response_t)];
+        int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
+        raft_recv_appendentries_response(raft_server, node, &appendEntriesResponse);
+
+    }
+    else if ([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_PROPOSE_CHAR_UUID]]) {
+        // This time, the peripheral is acting as a client and doesn't know who the target is, so we just
+        // make sure we are the master in order to process it
+        // TODO! What happens if there is no master? This message will be dropped... is this right?
+        if (!raft_is_leader(raft_server))
+            return;
+        
+        msg_entry_t msg;
+        [characteristic.value getBytes:&msg length:sizeof(msg_entry_t)];
+        int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
+        raft_recv_entry(raft_server, node, &msg);
     }
     
     // Right now we know that we are just getting coordinates...

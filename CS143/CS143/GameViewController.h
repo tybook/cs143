@@ -13,11 +13,12 @@
 
 @interface GameViewController : UIViewController
 
-- (void)proposeData:(NSData *) data;
-
 /* Set up the raft configuration based on the currently connected devices.
    Start periodic calls to update raft state */
 - (void)raft_start;
+
+/* TODO! Should abstract this */
+- (void)proposeData:(CGPoint) point;
 
 //+ (id) sharedController;
 

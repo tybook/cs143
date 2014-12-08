@@ -93,14 +93,9 @@ GameViewController *gameView;
         CGPoint location = [touch locationInNode:self];
         
         // Propose a client action
-        float coors[2];
-        coors[0] = (float)location.x;
-        coors[1] = (float)location.y;
-        NSData *data = [NSData dataWithBytes:coors length:8];
+        [self.gameView proposeData:location];
         
-        [self.gameView proposeData:data];
-        
-        [self drawTouch:location];
+        //[self drawTouch:location];
     }
 }
 

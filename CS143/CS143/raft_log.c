@@ -82,7 +82,7 @@ int log_append_entry(log_t* me_, raft_entry_t* c)
 {
     log_private_t* me = (void*)me_;
     
-    if (0 == c->id)
+    if (0 == c->entry.id)
         return 0;
     
     __ensurecapacity(me);

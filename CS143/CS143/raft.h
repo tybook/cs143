@@ -42,10 +42,12 @@ typedef struct {
     unsigned int id;
     
     /* entry data */
-    unsigned char* data;
+    // TODO! should think of a more abstracted way of doing this...
+    float data[2];
+    //unsigned char* data;
     
     /* length of entry data */
-    unsigned int len;
+    //unsigned int len;
 } msg_entry_t;
 
 typedef struct {
@@ -223,8 +225,9 @@ typedef int (
 )   (
 raft_server_t* raft,
 void *udata,
-const unsigned char *data,
-const int len
+msg_entry_t entry
+/*const unsigned char *data,
+const int len */
 );
 
 typedef struct {
@@ -232,21 +235,20 @@ typedef struct {
     func_send_requestvote_response_f send_requestvote_response;
     func_send_appendentries_f send_appendentries;
     func_send_appendentries_response_f send_appendentries_response;
+    
+    /* I don't think these three are used anywhere... */
     func_send_entries_f send_entries;
     func_send_entries_response_f send_entries_response;
     func_log_f log;
+    
     func_applylog_f applylog;
 } raft_cbs_t;
 
 typedef struct {
     /* entry's term */
     unsigned int term;
-    /* the entry's unique ID */
-    unsigned int id;
-    /* entry data */
-    unsigned char* data;
-    /* length of entry data */
-    unsigned int len;
+    /* the underlying entry */
+    msg_entry_t entry;
     /* number of nodes that have this entry */
     unsigned int num_nodes;
 } raft_entry_t;

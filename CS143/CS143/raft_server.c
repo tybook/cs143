@@ -307,8 +307,8 @@ int raft_recv_appendentries(
         
         if ((e = log_peektail(me->log)))
         {
-            raft_set_commit_idx(me_, e->id < ae->leader_commit ?
-                                e->id : ae->leader_commit);
+            raft_set_commit_idx(me_, e->entry.id < ae->leader_commit ?
+                                e->entry.id : ae->leader_commit);
             while (1 == raft_apply_entry(me_));
         }
     }
@@ -331,10 +331,11 @@ int raft_recv_appendentries(
         /* TODO: replace malloc with mempoll/arena */
         c = malloc(sizeof(raft_entry_t));
         c->term = me->current_term;
-        c->len = cmd->len;
+        c->entry = *cmd;
+        /*c->len = cmd->len;
         c->id = cmd->id;
         c->data = malloc(cmd->len);
-        memcpy(c->data, cmd->data, cmd->len);
+        memcpy(c->data, cmd->data, cmd->len);*/
         if (0 == raft_append_entry(me_, c))
         {
             __log(me_, "AE failure; couldn't append entry");
@@ -450,9 +451,10 @@ int raft_recv_entry(raft_server_t* me_, int node, msg_entry_t* e)
     __log(me_, "received entry from: %d", node);
     
     ety.term = me->current_term;
-    ety.id = e->id;
+    ety.entry = *e;
+/*    ety.id = e->id;
     ety.data = e->data;
-    ety.len = e->len;
+    ety.len = e->len; */
     res = raft_append_entry(me_, &ety);
     raft_send_entry_response(me_, node, e->id, res);
     for (i=0; i<me->num_nodes; i++)
@@ -503,7 +505,7 @@ int raft_apply_entry(raft_server_t* me_)
     if (me->commit_idx < me->last_applied_idx)
         me->commit_idx = me->last_applied_idx;
     if (me->cb.applylog)
-        me->cb.applylog(me_, me->udata, e->data, e->len);
+        me->cb.applylog(me_, me->udata, e->entry);
     return 1;
 }
 
