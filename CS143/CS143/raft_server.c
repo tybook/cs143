@@ -100,7 +100,7 @@ void raft_become_leader(raft_server_t* me_)
     {
         if (me->nodeid == i) continue;
         raft_node_t* p = raft_get_node(me_, i);
-        raft_node_set_next_idx(p, raft_get_current_idx(me_)+1);
+        raft_node_set_next_idx(p, raft_get_current_idx(me_));
         raft_send_appendentries(me_, i);
     }
 }
@@ -193,6 +193,8 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     
     __log(me_, "received appendentries response from: %d", node);
     
+    __log(me_, "success: %d current_idx %d first_idx %d");
+    
     p = raft_get_node(me_, node);
     
     if (1 == r->success)
@@ -200,6 +202,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         int i;
         
         for (i=r->first_idx; i<=r->current_idx; i++) {
+            __log(me_, "marking node as committed");
             log_mark_node_has_committed(me->log, i);
         }
 
@@ -498,9 +501,11 @@ int raft_append_entry(raft_server_t* me_, raft_entry_t* c)
     
     if (1 == log_append_entry(me->log,c))
     {
+        __log(me_, "incrementing current_idx");
         me->current_idx += 1;
         return 1;
     }
+    __log(me_, "NOT incrementing current_idx because log_appeng_entry failed");
     return 0;
 }
 
@@ -526,8 +531,6 @@ void raft_send_appendentries(raft_server_t* me_, int node)
 {
     raft_server_private_t* me = (void*)me_;
     
-    __log(me_, "sending appendentries to: %d", node);
-    
     if (!(me->cb.send_appendentries))
         return;
     
@@ -539,9 +542,13 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     ae.leader_commit = me->commit_idx;
     int node_next_idx = raft_node_get_next_idx(p);
     ae.prev_log_idx = node_next_idx - 1;
+    __log(me_, "me->current_idx %d node_next_idx %d", me->current_idx, node_next_idx);
     if (ae.prev_log_idx != -1) {
         raft_entry_t *entry = log_get_from_idx(me->log, ae.prev_log_idx);
         ae.prev_log_term = entry->term;
+    }
+    else {
+        ae.prev_log_term = -1;
     }
     
     if (me->current_idx > node_next_idx) {
@@ -552,6 +559,15 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     else {
         ae.n_entries = 0;
     }
+    
+    __log(me_, "sending appendentries to: %d; prev_log_idx: %d prev_log_term %d nentries %d",
+          node, ae.prev_log_idx, ae.prev_log_term, ae.n_entries);
+    
+    if (ae.n_entries == 1) {
+        ae.entry.id = 1;
+        __log(me_, "sending entry with id: %d", ae.entry.id);
+    }
+    
     if (me->cb.send_appendentries)
         me->cb.send_appendentries(me_, me->udata, node, &ae);
 }

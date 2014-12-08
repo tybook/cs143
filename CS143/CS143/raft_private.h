@@ -12,8 +12,8 @@
  * @version 0.1
  */
 
-#define REQUEST_TIMEOUT 200
-#define ELECTION_TIMEOUT 1000
+#define REQUEST_TIMEOUT 2000 //200
+#define ELECTION_TIMEOUT 10000 //1000
 
 enum {
     RAFT_STATE_NONE,
