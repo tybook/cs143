@@ -208,7 +208,10 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
 /* Write to own RAFT_TO_CANDIDATE characteristic */
 int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_requestvote_response_t* msg)
 {
-    NSLog(@"writing to own RAFT_TO_CANDIDATE characterisitic");
+    NSUUID *uuid = [pPeripheralRaftIdxDict objectForKey:[NSNumber numberWithInt:peer]];
+    const char *u = [[uuid UUIDString] UTF8String];
+    NSLog(@"writing to own RAFT_TO_CANDIDATE characterisitic for node %@", [uuid UUIDString]);
+    memccpy(msg->uuid, u, 16, sizeof(char));
     NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_response_t)];
     [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCandidateCharacteristic onSubscribedCentrals:nil];
     return 1;

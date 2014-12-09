@@ -63,7 +63,11 @@ typedef struct {
     int term;
     
     /* true means candidate received vote */
+    // not really used because we ignore further vote requests that term
     int vote_granted;
+    
+    // the UUID of the candidate we're voting for
+    char uuid[16];
 } msg_requestvote_response_t;
 
 typedef struct {
