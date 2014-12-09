@@ -583,6 +583,8 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
         // We should make sure this is targeted for us. This can be done by checking to see if we are the master
         // This is safe because raft guarantees there can't be more than one master. But we still have the issue
         // with candidate votes that must be addressed
+        if (!raft_is_leader(raft_server))
+            return;
         msg_appendentries_response_t appendEntriesResponse;
         [characteristic.value getBytes:&appendEntriesResponse length:sizeof(msg_appendentries_response_t)];
         int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
