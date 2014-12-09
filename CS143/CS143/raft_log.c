@@ -19,7 +19,6 @@
 #include "raft_log.h"
 
 #define INITIAL_CAPACITY 10
-#define in(x) ((log_private_t*)x)
 
 typedef struct
 {
@@ -41,17 +40,12 @@ typedef struct
     raft_entry_t* entries;
 } log_private_t;
 
-static void __ensurecapacity(
-                             log_private_t * me
-                             )
+static void __ensurecapacity(log_private_t * me)
 {
-    int i, j;
-    raft_entry_t *temp;
-    
     if (me->count < me->size)
         return;
     
-    temp = calloc(1,sizeof(raft_entry_t) * me->size * 2);
+    raft_entry_t *temp = calloc(1,sizeof(raft_entry_t) * me->size * 2);
     memcpy(temp, me->entries, sizeof(raft_entry_t)*me->count);
     
     me->size *= 2;

@@ -10,9 +10,6 @@
 #import "GameScene.h"
 #import "raft.h"
 
-// TODO! bug with 1 device when you get to 23 nodes...
-// http://loufranco.com/blog/understanding-exc_bad_access
-
 @implementation SKScene (Unarchive)
 
 + (instancetype)unarchiveFromFile:(NSString *)file {
@@ -76,8 +73,8 @@ GameScene *pScene;
 #define RAFT_SERVICE_UUID                      @"698C6448-C9A4-4CAC-A30A-D33F3AF25330"
 #define RAFT_TO_CENTRAL_CHAR_UUID              @"F6ACB6F5-04C5-441C-A5AF-12129B550E58"
 #define RAFT_FROM_CENTRAL_CHAR_UUID            @"02E6CA47-2D9E-4A09-8117-34D1545715DA"
-#define RAFT_TO_CANDIDATE_CHAR_UUID   @"C1224A79-4715-4FFB-B43F-EA2B425EDD98"
-#define RAFT_FROM_CANDIDATE_CHAR_UUID @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
+#define RAFT_TO_CANDIDATE_CHAR_UUID            @"C1224A79-4715-4FFB-B43F-EA2B425EDD98"
+#define RAFT_FROM_CANDIDATE_CHAR_UUID          @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
 #define RAFT_PROPOSE_CHAR_UUID                 @"6A401949-869B-4DAF-9E75-2FFEF411EDEE"
 
 #define RAFT_PERIODIC_SEC                   0.01
