@@ -77,7 +77,7 @@ GameScene *pScene;
 #define RAFT_FROM_CANDIDATE_CHAR_UUID          @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
 #define RAFT_PROPOSE_CHAR_UUID                 @"6A401949-869B-4DAF-9E75-2FFEF411EDEE"
 
-#define RAFT_PERIODIC_SEC                   0.01
+#define RAFT_PERIODIC_SEC                     0.01
 
 
 @implementation GameViewController
@@ -118,7 +118,7 @@ GameScene *pScene;
 
 - (void) raft_call_periodic
 {
-    raft_periodic(raft_server, RAFT_PERIODIC_SEC * 1000);
+    raft_periodic(raft_server, RAFT_PERIODIC_SEC*1000);
 }
 
 - (void) raft_start
@@ -208,7 +208,6 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
 /* Write to own RAFT_TO_CANDIDATE characteristic */
 int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_requestvote_response_t* msg)
 {
-    NSLog(@"writing to own RAFT_TO_CANDIDATE characterisitic");
     NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_response_t)];
     [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCandidateCharacteristic onSubscribedCentrals:nil];
     return 1;
@@ -430,7 +429,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
         }
     }
     else if ([charac.UUID isEqual:[CBUUID UUIDWithString:RAFT_FROM_CENTRAL_CHAR_UUID]])
-    {        
+    {
         int node = -1;
         NSString *uuid = [[request.central identifier] UUIDString];
         for (CBPeripheral *p in self.connectedPeripherals) {

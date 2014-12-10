@@ -200,11 +200,11 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     
     p = raft_get_node(me_, node);
     
-    // 2 == r->success if it was a duplicate
     
     if (1 == r->success)
     {
         int i;
+        int committedNewEntry = 0;
         
         for (i=r->first_idx; i<r->current_idx; i++) {
             __log(me_, "marking index %d as committed", i);
@@ -226,12 +226,16 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             if (e && me->num_nodes / 2 <= e->num_nodes)
             {
                 if (0 == raft_apply_entry(me_)) break;
+                else committedNewEntry = 1;
             }
             else
             {
                 break;
             }
         }
+        if (committedNewEntry)
+            raft_send_appendentries(me_, node);
+
     }
     else if (r->success == 0)
     {
@@ -354,7 +358,9 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     if (ae->n_entries == 1) {
         if (raft_get_current_idx(me_) >  ae->prev_log_idx + 1) {
             __log(me_, "AE got duplicate message");
-            r.success = 2;
+            r.success = 1;
+            r.current_idx = raft_get_current_idx(me_);
+            r.first_idx = ae->prev_log_idx + 1;
             goto done;
         }
         
@@ -487,7 +493,7 @@ int raft_recv_entry(raft_server_t* me_, int node, msg_entry_t* e)
     raft_entry_t ety;
     int res, i;
     
-    __log(me_, "RECEVIED ENTRY FROM: %d", node);
+    __log(me_, "RECEIVED ENTRY FROM: %d", node);
     
     ety.term = me->current_term;
     ety.entry = *e;
