@@ -428,6 +428,8 @@ int raft_recv_requestvote(raft_server_t* me_, int node, msg_requestvote_t* vr)
         r.vote_granted = 1;
     }
     
+    memcpy(r.uuid, vr->uuid, 16);
+    
     __log(me_, "node %d requested vote: %s",
           node, r.vote_granted == 1 ? "granted" : "not granted");
     

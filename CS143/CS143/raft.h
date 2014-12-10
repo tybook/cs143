@@ -25,16 +25,21 @@ typedef struct {
 
 typedef struct {
     /* candidate's term */
-    int term;
+    uint16_t term;
     
     /* candidate requesting vote */
-    int candidate_id;
+    //int candidate_id;
     
     /* idx of candidate's last log entry */
-    int last_log_idx;
+    uint16_t last_log_idx;
     
     /* term of candidate's last log entry */
-    int last_log_term;
+    //int last_log_term;
+    
+    /* candidate's device UUID that we echo in response if we vote for this
+     * candidate */
+    char uuid[16];
+
 } msg_requestvote_t;
 
 typedef struct {

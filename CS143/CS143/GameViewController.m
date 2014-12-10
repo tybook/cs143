@@ -217,6 +217,10 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
     CBPeripheral *p;
     CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CANDIDATE_CHAR_UUID, &p);
     if (charac) {
+        unsigned char uuid[16];
+        [[[UIDevice currentDevice] identifierForVendor] getUUIDBytes:uuid];
+        memcpy(&msg->uuid, uuid, 16);
+        NSLog(@"SENDING: %@", [[[NSUUID alloc] initWithUUIDBytes:msg->uuid] UUIDString]);
         NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_t)];
         [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
         return 1;
@@ -227,6 +231,9 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
 /* Write to own RAFT_TO_CANDIDATE characteristic */
 int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_requestvote_response_t* msg)
 {
+    if(msg->vote_granted == 0) return 1;
+    
+    NSLog(@"VOTING FOR %@", [[[NSUUID alloc] initWithUUIDBytes:msg->uuid] UUIDString]);
     NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_response_t)];
     [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCandidateCharacteristic onSubscribedCentrals:nil];
     return 1;
@@ -295,8 +302,6 @@ int stopscan() {
     
     // create a new raft server
     raft_server = raft_new(0);
-    NSUUID *ownUUID = [[UIDevice currentDevice] identifierForVendor];
-    NSLog(@"UUID: %@", [ownUUID UUIDString]);
     
     raft_cbs_t funcs = {
         .send_requestvote = send_requestvote ,
@@ -631,13 +636,15 @@ int stopscan() {
     // CBDescriptor maybe?
     
     if([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_TO_CANDIDATE_CHAR_UUID]]) {
-        // TODO: WAIT! We need some way to know who this vote is for. If it just says voted granted,
-        // then multiple candidates at the same time will get alerted of the written value and
-        // then we fooked when both think they got the vote
         msg_requestvote_response_t voteResponse;
         [characteristic.value getBytes:&voteResponse length:sizeof(msg_requestvote_response_t)];
-        int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
-        raft_recv_requestvote_response(raft_server, node, &voteResponse);
+        NSString *receivedVoteeUUID = [[[NSUUID alloc] initWithUUIDBytes:(unsigned char *)voteResponse.uuid] UUIDString];
+        NSLog(@"RECEIVED: %@ from %@",receivedVoteeUUID,peripheral);
+        NSLog(@"My UUID: %@", [[[UIDevice currentDevice] identifierForVendor] UUIDString]);
+        if([receivedVoteeUUID isEqualToString:[[[UIDevice currentDevice] identifierForVendor] UUIDString]]) {
+            int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
+            raft_recv_requestvote_response(raft_server, node, &voteResponse);
+        }
     }
     else if ([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_TO_CENTRAL_CHAR_UUID]]) {
         // We should make sure this is targeted for us. This can be done by checking to see if we are the master
