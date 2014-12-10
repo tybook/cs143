@@ -55,6 +55,7 @@ typedef struct {
     // this will ALWAYS be 1 because we have small payloads with BLE
     int n_entries;
     msg_entry_t entry;
+    int entry_term;
     int leader_commit;
 } msg_appendentries_t;
 

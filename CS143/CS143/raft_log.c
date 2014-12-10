@@ -71,8 +71,9 @@ raft_entry_t* log_get_from_idx(log_t* me_, int idx)
 {
     log_private_t* me = (void*)me_;
     
-    if (me->count <= idx)
+    if (me->count <= idx) {
         return NULL;
+    }
     
     return &me->entries[idx];
 }

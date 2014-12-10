@@ -218,6 +218,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     
     for (int i=r->first_idx; i<r->current_idx; i++) {
         __log(me_, "marking index %d as committed", i);
+        // TODO! we need to keep track of which nodes have committed so we don't double count...
         log_mark_node_has_committed(me->log, i);
     }
     
@@ -265,6 +266,7 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     __log(me_, "prev_log_idx %d", ae->prev_log_idx);
     __log(me_, "prev_log_term %d", ae->prev_log_term);
     __log(me_, "n_entries %d", ae->n_entries);
+    __log(me_, "entry_term %d", ae->entry_term);
     __log(me_, "leader_commit %d", ae->leader_commit);
     
     /* we've found a leader who is legitimate */
@@ -301,8 +303,10 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
             raft_entry_t* e2;
             if ((e2 = raft_get_entry_from_idx(me_, ae->prev_log_idx+1)))
             {
-                if (e2->term != ae->term)
+                if (e2->term != ae->entry_term) {
+                    __log(me_, "AE deleting term because of inconsistency");
                     log_delete(me->log, ae->prev_log_idx+1);
+                }
             }
         }
         else
@@ -330,7 +334,6 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     if (raft_is_candidate(me_))
         raft_become_follower(me_);
     
-    __log(me_, "setting current term to %d", ae->term);
     raft_set_current_term(me_, ae->term);
     
     msg_entry_t cmd = ae->entry;
@@ -347,7 +350,7 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
         
         /* TODO: replace malloc with mempoll/arena */
         c = malloc(sizeof(raft_entry_t));
-        c->term = me->current_term;
+        c->term = ae->entry_term;
         c->entry = cmd;
         if (0 == raft_append_entry(me_, c))
         {
@@ -546,6 +549,7 @@ void raft_send_appendentries(raft_server_t* me_, int node)
         ae.n_entries = 1;
         raft_entry_t *next_entry = log_get_from_idx(me->log, node_next_idx);
         ae.entry = next_entry->entry;
+        ae.entry_term = next_entry->term;
     }
     else {
         ae.n_entries = 0;
