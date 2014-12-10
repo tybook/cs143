@@ -11,7 +11,7 @@
 @interface GameScene : SKScene
 
 // This will also start the raft server
--(void)startGame;
+-(void)startGame:(int)startCandidate;
 
 -(void)drawTouch: (CGPoint) coors;
 -(void)handleConnected: (NSUInteger) numConnected;

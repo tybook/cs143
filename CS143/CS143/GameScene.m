@@ -22,23 +22,29 @@ GameViewController *gameView;
 
 @implementation GameScene
 
--(void)clearScene
+-(void)clearPressed
 {
-    [self removeAllChildren];
+    // Propose a value at location (-1, -1)
+    CGPoint location = CGPointMake(-1, -1);
+    [self.gameView proposeData:location];
 }
 
--(void)startGame
+-(void)startGame:(int)startCandidate
 {
     // Set the raft configuration and start raft_periodic
     // This will send RequestVote messages, so other devices will
     // know that someone has started the game
-    [self.gameView raft_start];
+    [self.gameView raft_start:startCandidate];
     
     
     // hide the start button and show the clear button
     self.resetButton.hidden = NO;
     self.startButton.hidden = YES;
     self.connectedLabel.hidden = YES;
+}
+
+-(void)startGameAsCandidate {
+    [self startGame:1];
 }
 
 -(void)handleConnected: (NSUInteger) numConnected
@@ -57,7 +63,7 @@ GameViewController *gameView;
     [self.startButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
                                      (self.view.frame.size.height - height)/2, width, height)];
     [self.startButton setTitle:@"Start" forState:UIControlStateNormal];
-    [self.startButton addTarget:self action:@selector(startGame) forControlEvents:UIControlEventTouchUpInside];
+    [self.startButton addTarget:self action:@selector(startGameAsCandidate) forControlEvents:UIControlEventTouchUpInside];
     self.startButton.hidden = NO;
     [self.view addSubview:self.startButton];
     
@@ -66,7 +72,7 @@ GameViewController *gameView;
     [self.resetButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
                                      self.view.frame.size.height - 75, width, height)];
     [self.resetButton setTitle:@"Reset" forState:UIControlStateNormal];
-    [self.resetButton addTarget:self action:@selector(clearScene) forControlEvents:UIControlEventTouchUpInside];
+    [self.resetButton addTarget:self action:@selector(clearPressed) forControlEvents:UIControlEventTouchUpInside];
     self.resetButton.hidden = YES;
     [self.view addSubview:self.resetButton];
     
@@ -101,6 +107,11 @@ GameViewController *gameView;
 
 -(void)drawTouch:(CGPoint)coors
 {
+    if (coors.x == -1 && coors.y == -1) {
+        // clear the scene
+        [self removeAllChildren];
+        return;
+    }
     SKSpriteNode *sprite = [SKSpriteNode spriteNodeWithImageNamed:@"Spaceship"];
     
     sprite.xScale = 0.2;

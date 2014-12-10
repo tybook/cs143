@@ -200,49 +200,57 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     
     p = raft_get_node(me_, node);
     
-    // 2 == r->success if it was a duplicate
-    
-    if (1 == r->success)
-    {
-        int i;
-        
-        for (i=r->first_idx; i<r->current_idx; i++) {
-            __log(me_, "marking index %d as committed", i);
-            log_mark_node_has_committed(me->log, i);
-        }
-
-        raft_node_set_next_idx(p, r->current_idx);
-        
-        while (1)
-        {
-            raft_entry_t* e;
-            
-            e = log_get_from_idx(me->log, me->last_applied_idx + 1);
-            
-            /* majority has this */
-            if (e)
-                __log(me_, "entry %d has %d commits", me->last_applied_idx + 1,
-                    e->num_nodes);
-            if (e && me->num_nodes / 2 <= e->num_nodes)
-            {
-                if (0 == raft_apply_entry(me_)) break;
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
-    else if (r->success == 0)
+    if (r->success == 0)
     {
         /* If AppendEntries fails because of log inconsistency:
          decrement nextIndex and retry (§5.3) */
-        assert(0 <= raft_node_get_next_idx(p));
+        assert(-1 <= raft_node_get_next_idx(p));
         // TODO does this have test coverage?
         // TODO can jump back to where node is different instead of iterating
         raft_node_set_next_idx(p, raft_node_get_next_idx(p)-1);
         raft_send_appendentries(me_, node);
+        return 1;
     }
+
+    
+    // TODO! is this right?
+    if (raft_node_get_next_idx(p) == r->current_idx) {
+        // the node didn't change its current_idx
+        // we have nothing to do
+        return 1;
+    }
+    
+    int committedNewEntry = 0;
+    
+    for (int i=r->first_idx; i<r->current_idx; i++) {
+        __log(me_, "marking index %d as committed", i);
+        log_mark_node_has_committed(me->log, i);
+    }
+    
+    raft_node_set_next_idx(p, r->current_idx);
+    
+    while (1)
+    {
+        raft_entry_t* e;
+        
+        e = log_get_from_idx(me->log, me->last_applied_idx + 1);
+        
+        /* majority has this */
+        if (e)
+            __log(me_, "entry %d has %d commits", me->last_applied_idx + 1,
+                  e->num_nodes);
+        if (e && me->num_nodes / 2 <= e->num_nodes)
+        {
+            if (0 == raft_apply_entry(me_)) break;
+            else committedNewEntry = 1;
+        }
+        else
+        {
+            break;
+        }
+    }
+    if (committedNewEntry)
+        raft_send_appendentries(me_, node);
     
     return 1;
 }
@@ -271,7 +279,7 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     /* 1. Reply false if term < currentTerm (§5.1) */
     if (ae->term < me->current_term)
     {
-        __log(me_, "AE term is less than current term");
+        __log(me_, "AE term %d is less than current term %d", ae->term, me->current_term);
         r.success = 0;
         goto done;
     }
@@ -344,6 +352,7 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     if (raft_is_candidate(me_))
         raft_become_follower(me_);
     
+    __log(me_, "setting current term to %d", ae->term);
     raft_set_current_term(me_, ae->term);
     
     // append all entries to log if we don't have them already
@@ -354,7 +363,9 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     if (ae->n_entries == 1) {
         if (raft_get_current_idx(me_) >  ae->prev_log_idx + 1) {
             __log(me_, "AE got duplicate message");
-            r.success = 2;
+            r.success = 1;
+            r.current_idx = raft_get_current_idx(me_);
+            r.first_idx = ae->prev_log_idx + 1;
             goto done;
         }
         
@@ -490,7 +501,7 @@ int raft_recv_entry(raft_server_t* me_, int node, msg_entry_t* e)
     raft_entry_t ety;
     int res, i;
     
-    __log(me_, "RECEVIED ENTRY FROM: %d", node);
+    __log(me_, "RECEIVED ENTRY FROM: %d", node);
     
     ety.term = me->current_term;
     ety.entry = *e;

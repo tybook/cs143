@@ -84,7 +84,6 @@ int log_append_entry(log_t* me_, raft_entry_t* c)
 raft_entry_t* log_get_from_idx(log_t* me_, int idx)
 {
     log_private_t* me = (void*)me_;
-    int i;
     
     if (me->count <= idx)
         return NULL;
@@ -145,7 +144,6 @@ void log_free(log_t * me_)
 
 void log_mark_node_has_committed(log_t* me_, int idx)
 {
-    log_private_t* me = (void*)me_;
     raft_entry_t* e;
     
     if ((e = log_get_from_idx(me_,idx)))
