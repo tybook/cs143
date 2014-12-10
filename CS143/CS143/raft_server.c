@@ -420,6 +420,7 @@ int raft_recv_requestvote(raft_server_t* me_, int node, msg_requestvote_t* vr)
         vr->last_log_idx < me->current_idx)
     {
         r.vote_granted = 0;
+        return 0;
     }
     else
     {
