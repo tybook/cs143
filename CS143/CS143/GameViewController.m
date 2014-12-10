@@ -589,6 +589,8 @@ int stopscan() {
         
         [self.PeripheralRaftIdxDict setObject:[NSNumber numberWithInt:newIdx] forKey:peripheral];
         [self.PeripheralRaftIdxDict setObject:peripheral forKey:[NSNumber numberWithInt:newIdx]];
+        
+        [peripheral discoverServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]];
     }
     
     // Make sure we get the discovery callbacks
