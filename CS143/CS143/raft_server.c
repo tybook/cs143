@@ -217,9 +217,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         raft_send_appendentries(me_, node);
         return 1;
     }
-
     
-    // TODO! is this right?
     if (raft_node_get_next_idx(p) == r->current_idx) {
         // the node didn't change its current_idx
         // we have nothing to do
@@ -255,7 +253,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             break;
         }
     }
-    if (committedNewEntry)
+    if (committedNewEntry || raft_node_get_next_idx(p) < me->current_idx)
         raft_send_appendentries(me_, node);
     
     return 1;
