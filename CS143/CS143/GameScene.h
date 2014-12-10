@@ -7,8 +7,9 @@
 //
 
 #import <SpriteKit/SpriteKit.h>
+#import "RaftBLE.h"
 
-@interface GameScene : SKScene
+@interface GameScene : SKScene <RaftBLEDelegate>
 
 // This will also start the raft server
 -(void)startGame:(int)startCandidate;
