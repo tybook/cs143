@@ -110,8 +110,6 @@ GameScene *pScene;
 -(void)proposeData:(CGPoint)point
 {
     msg_entry_t msg;
-    // TODO! Make a unique id composed of an incrementing counter and the unique identifier of the device
-    msg.id = 1;
     msg.data[0] = point.x;
     msg.data[1] = point.y;
     
@@ -156,31 +154,16 @@ GameScene *pScene;
     // set up the raft configuration with yourself as idx 0
     // keep a dictionary mapping UUID of peripheral to idx in nodes
     NSUInteger numConnected = [[self.connectedPeripherals allKeys] count];
-    // one for self and one for NULL termination
-    // TODO! This is wasteful to keep index 0 empty, don't think we need it...
-    raft_node_configuration_t *nodes = malloc((2 + numConnected)*sizeof(raft_node_configuration_t));
-
-    // make sure this first node (self) doesn't look like the end
-    raft_node_configuration_t node = {(void*)1};
-    nodes[0] = node;
-
     
     // Store the connected peripherals into nodes array
     NSNumber *idx = @1;
     for (CBPeripheral *p in [self.connectedPeripherals allKeys]) {
-        NSUUID *UUID = [p identifier];
-        // TODO! I'm not even using any passed in UUID for the configuration nodes
-        raft_node_configuration_t node = {(void*)CFBridgingRetain(UUID)};
-        nodes[[idx intValue]] = node;
         [self.PeripheralRaftIdxDict setObject:idx forKey:p];
         [self.PeripheralRaftIdxDict setObject:p forKey:idx];
         idx = @([idx intValue] + 1);
     }
     
-    raft_node_configuration_t nodeEnd = {(void*)0};
-    nodes[[idx intValue]] = nodeEnd;
-
-    raft_set_configuration(raft_server, nodes);
+    raft_set_configuration(raft_server, (int)numConnected + 1);
     
     // MAKE SURE THIS WORKS
     if (startCandidate) {
@@ -215,7 +198,7 @@ CBCharacteristic *getCharacterisitic(int peer, NSString *charUUID, CBPeripheral 
 }
 
 /* Write to RAFT_FROM_CANDIDATE characterisitic of peer */
-int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote_t* msg)
+int send_requestvote(raft_server_t* raft, int peer, msg_requestvote_t* msg)
 {
     CBPeripheral *p;
     CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CANDIDATE_CHAR_UUID, &p);
@@ -232,7 +215,7 @@ int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote
 }
 
 /* Write to own RAFT_TO_CANDIDATE characteristic */
-int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_requestvote_response_t* msg)
+int send_requestvote_response(raft_server_t* raft, int peer, msg_requestvote_response_t* msg)
 {
     if(msg->vote_granted == 0) return 1;
     
@@ -245,7 +228,7 @@ int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_re
 /* Write to RAFT_FROM_CENTRAL characterisitic of peer */
 // TODO! make sure all these structs are not too big. How much room do we have?
 // maximumUpdateValueLength
-int send_appendentries(raft_server_t* raft, void* udata, int peer, msg_appendentries_t* msg)
+int send_appendentries(raft_server_t* raft, int peer, msg_appendentries_t* msg)
 {
     CBPeripheral *p;
     CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CENTRAL_CHAR_UUID, &p);
@@ -258,7 +241,7 @@ int send_appendentries(raft_server_t* raft, void* udata, int peer, msg_appendent
 }
 
 /* Write to own RAFT_TO_CENTRAL characteristic */
-int send_appendentries_response(raft_server_t* raft, void* udata, int peer, msg_appendentries_response_t* msg)
+int send_appendentries_response(raft_server_t* raft, int peer, msg_appendentries_response_t* msg)
 {
     NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_appendentries_response_t)];
     [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCentralCharacteristic onSubscribedCentrals:nil];
@@ -316,7 +299,7 @@ int stopscan() {
     };
     
     /* don't think we need the passed in udata to this function */
-    raft_set_callbacks(raft_server, &funcs, (void*) 0);
+    raft_set_callbacks(raft_server, &funcs);
     
     
     self.discoveredPeripherals = [[NSMutableArray alloc] init];

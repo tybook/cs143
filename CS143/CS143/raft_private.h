@@ -64,7 +64,6 @@ typedef struct {
     
     /* callbacks */
     raft_cbs_t cb;
-    void* udata;
     
     /* my node ID */
     int nodeid;
@@ -73,8 +72,6 @@ typedef struct {
 void raft_election_start(raft_server_t* me);
 
 void raft_become_leader(raft_server_t* me);
-
-void raft_become_candidate(raft_server_t* me);
 
 void raft_become_follower(raft_server_t* me);
 
@@ -111,7 +108,7 @@ void raft_set_last_applied_idx(raft_server_t* me, int idx);
 void raft_set_state(raft_server_t* me_, int state);
 int raft_get_state(raft_server_t* me_);
 
-raft_node_t* raft_node_new(void* udata);
+raft_node_t* raft_node_new();
 
 void raft_node_set_next_idx(raft_node_t* node, int nextIdx);
 

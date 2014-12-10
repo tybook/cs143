@@ -12,56 +12,26 @@
  */
 
 typedef struct {
-    /** The ID that this node used to have.
-     * So that we can tell which nodes were removed/added when the
-     * configuration changes 
-     * NOTE: not needed now because we don't support configuration changes */
-    //int old_id;
-    
-    /** User data pointer for addressing.
-     * This is the UUID of the peripheral */
-    void* udata_address;
-} raft_node_configuration_t;
-
-typedef struct {
     /* candidate's term */
     uint16_t term;
-    
-    /* candidate requesting vote */
-    //int candidate_id;
     
     /* idx of candidate's last log entry */
     uint16_t last_log_idx;
     
     /* term of candidate's last log entry */
+    // probably want this for complete correctness...
     //int last_log_term;
     
-    /* candidate's device UUID that we echo in response if we vote for this
-     * candidate */
+    // candidate's device UUID that we echo in response if we vote for this candidate
     char uuid[16];
 
 } msg_requestvote_t;
 
 typedef struct {
-    /* the entry's unique ID */
-    unsigned int id;
-    
     /* entry data */
     // TODO! should think of a more abstracted way of doing this...
     float data[2];
-    //unsigned char* data;
-    
-    /* length of entry data */
-    //unsigned int len;
 } msg_entry_t;
-
-typedef struct {
-    /* the entry's unique ID */
-    unsigned int id;
-    
-    /* whether or not the entry was committed */
-    int was_committed;
-} msg_entry_response_t;
 
 typedef struct {
     /* currentTerm, for candidate to update itself */
@@ -75,11 +45,14 @@ typedef struct {
     char uuid[16];
 } msg_requestvote_response_t;
 
+/* TODO! this is way more than 20 bytes..., how much room do we have? */
 typedef struct {
     int term;
     int leader_id;
     int prev_log_idx;
     int prev_log_term;
+    
+    // this will ALWAYS be 1 because we have small payloads with BLE
     int n_entries;
     msg_entry_t entry;
     int leader_commit;
@@ -105,138 +78,65 @@ typedef struct {
 typedef void* raft_server_t;
 typedef void* raft_node_t;
 
-typedef enum {
-    RAFT_MSG_REQUESTVOTE,
-    RAFT_MSG_REQUESTVOTE_RESPONSE,
-    RAFT_MSG_APPENDENTRIES,
-    RAFT_MSG_APPENDENTRIES_RESPONSE,
-    RAFT_MSG_ENTRY,
-    RAFT_MSG_ENTRY_RESPONSE,
-} raft_message_type_e;
-
-
-typedef int (
-*func_send_f
-)   (
-raft_server_t* raft,
-void *udata,
-int node,
-raft_message_type_e msg_type,
-const unsigned char *send_data,
-const int len
-);
-
 /**
  * @param raft The Raft server making this callback
- * @param udata User data that is passed from Raft server
  * @param node The peer's ID that we are sending this message to
  * @return 0 on error */
 typedef int (
 *func_send_requestvote_f
 )   (
 raft_server_t* raft,
-void *udata,
 int node,
 msg_requestvote_t* msg
 );
 
 /**
  * @param raft The Raft server making this callback
- * @param udata User data that is passed from Raft server
  * @param node The peer's ID that we are sending this message to
  * @return 0 on error */
 typedef int (
 *func_send_requestvote_response_f
 )   (
 raft_server_t* raft,
-void *udata,
 int node,
 msg_requestvote_response_t* msg
 );
 
 /**
  * @param raft The Raft server making this callback
- * @param udata User data that is passed from Raft server
  * @param node The peer's ID that we are sending this message to
  * @return 0 on error */
 typedef int (
 *func_send_appendentries_f
 )   (
 raft_server_t* raft,
-void *udata,
 int node,
 msg_appendentries_t* msg
 );
 
 /**
  * @param raft The Raft server making this callback
- * @param udata User data that is passed from Raft server
  * @param node The peer's ID that we are sending this message to
  * @return 0 on error */
 typedef int (
 *func_send_appendentries_response_f
 )   (
 raft_server_t* raft,
-void *udata,
 int node,
 msg_appendentries_response_t* msg
 );
 
-/**
- * @param raft The Raft server making this callback
- * @param udata User data that is passed from Raft server
- * @param node The peer's ID that we are sending this message to
- * @return 0 on error */
-typedef int (
-*func_send_entries_f
-)   (
-raft_server_t* raft,
-void *udata,
-int node,
-msg_entry_t* msg
-);
-
-/**
- * @param raft The Raft server making this callback
- * @param udata User data that is passed from Raft server
- * @param node The peer's ID that we are sending this message to
- * @return 0 on error */
-typedef int (
-*func_send_entries_response_f
-)   (
-raft_server_t* raft,
-void *udata,
-int node,
-msg_entry_response_t* msg
-);
-
-#ifndef HAVE_FUNC_LOG
-#define HAVE_FUNC_LOG
-typedef void (
-*func_log_f
-)    (
-raft_server_t* raft,
-void *udata,
-const char *buf,
-...
-);
-#endif
 
 /**
  * Apply this log to the state machine
  * @param raft The Raft server making this callback
- * @param udata User data that is passed from Raft server
- * @param data Data to be applied to the log
- * @param len Length in bytes of data to be applied
+ * @param entry Entry to be applied to the log
  * @return 0 on error */
 typedef int (
 *func_applylog_f
 )   (
 raft_server_t* raft,
-void *udata,
 msg_entry_t entry
-/*const unsigned char *data,
-const int len */
 );
 
 typedef int (
@@ -256,14 +156,7 @@ typedef struct {
     func_send_requestvote_response_f send_requestvote_response;
     func_send_appendentries_f send_appendentries;
     func_send_appendentries_response_f send_appendentries_response;
-    
-    /* I don't think these three are used anywhere... */
-    func_send_entries_f send_entries;
-    func_send_entries_response_f send_entries_response;
-    func_log_f log;
-    
     func_applylog_f applylog;
-    
     func_startscan_f startscan;
     func_stopscan_f stopscan;
 } raft_cbs_t;
@@ -280,9 +173,6 @@ typedef struct {
 /**
  * Initialise a new Raft server
  *
- * Request timeout defaults to 200 milliseconds
- * Election timeout defaults to 1000 milliseconds
- *
  * @return newly initialised Raft server */
 raft_server_t* raft_new(int nodeid);
 
@@ -297,13 +187,12 @@ void raft_free(raft_server_t* me_);
  *
  * @param funcs Callbacks
  * @param udata The context that we include when making a callback */
-void raft_set_callbacks(raft_server_t* me, raft_cbs_t* funcs, void* udata);
+void raft_set_callbacks(raft_server_t* me, raft_cbs_t* funcs);
 
 /**
  * Set configuration
  * @param nodes Array of nodes. End of array is marked by NULL entry */
-void raft_set_configuration(raft_server_t* me_,
-                            raft_node_configuration_t* nodes);
+void raft_set_configuration(raft_server_t* me_, int num_nodes);
 
 /**
  * Set election timeout
@@ -438,6 +327,8 @@ int raft_get_voted_for(raft_server_t* me);
 
 void raft_become_candidate(raft_server_t* me_);
 
+// should be called when a node disconnects to clear
+// its metadata
 void raft_clear_node(raft_server_t* me_, int idx);
 
 #endif /* RAFT_H_ */

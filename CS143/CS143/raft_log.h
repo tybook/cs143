@@ -26,11 +26,6 @@ void log_delete(log_t* me_, int idx);
  * Empty the queue. */
 void log_empty(log_t * me_);
 
-/**
- * Remove oldest entry
- * @return oldest entry */
-void *log_poll(log_t * me_);
-
 raft_entry_t* log_get_from_idx(log_t* me_, int idx);
 
 /**

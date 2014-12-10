@@ -35,14 +35,12 @@ static void __log(raft_server_t *me_, const char *fmt, ...)
     vsprintf(buf, fmt, args);
 #if DEBUG /* debugging */
     printf("%d: %s\n", me->nodeid, buf);
-    //__FUNC_log(bto,src,buf);
 #endif
 }
 
 raft_server_t* raft_new(int nodeid)
 {
     raft_server_private_t* me;
-    
     
     if (!(me = calloc(1, sizeof(raft_server_private_t))))
         return NULL;
@@ -62,13 +60,10 @@ raft_server_t* raft_new(int nodeid)
     return (void*)me;
 }
 
-void raft_set_callbacks(raft_server_t* me_,
-                        raft_cbs_t* funcs, void* udata)
+void raft_set_callbacks(raft_server_t* me_, raft_cbs_t* funcs)
 {
     raft_server_private_t* me = (void*)me_;
-    
     memcpy(&me->cb, funcs, sizeof(raft_cbs_t));
-    me->udata = udata;
 }
 
 void raft_free(raft_server_t* me_)
@@ -153,23 +148,17 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
 {
     raft_server_private_t* me = (void*)me_;
     
-    //__log(me_, "periodic elapsed time: %d", me->timeout_elapsed);
-    
-    switch (me->state)
-    {
-        case RAFT_STATE_FOLLOWER:
-            if (me->last_applied_idx < me->commit_idx)
-            {
-                if (0 == raft_apply_entry(me_))
-                    return 0;
-            }
-            break;
-    }
-    
     me->timeout_elapsed += msec_since_last_period;
     
-    if (me->state == RAFT_STATE_LEADER)
-    {
+    if (me->state == RAFT_STATE_FOLLOWER) {
+        if (me->last_applied_idx < me->commit_idx)
+        {
+            if (0 == raft_apply_entry(me_))
+                return 0;
+        }
+    }
+    
+    if (me->state == RAFT_STATE_LEADER) {
         if (me->request_timeout <= me->timeout_elapsed)
         {
             raft_send_appendentries_all(me_);
@@ -218,12 +207,13 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         return 1;
     }
     
+    // the node didn't change its current_idx
+    // we have nothing to do
     if (raft_node_get_next_idx(p) == r->current_idx) {
-        // the node didn't change its current_idx
-        // we have nothing to do
         return 1;
     }
     
+    // set to 1 if we updated our commit_idx
     int committedNewEntry = 0;
     
     for (int i=r->first_idx; i<r->current_idx; i++) {
@@ -233,6 +223,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     
     raft_node_set_next_idx(p, r->current_idx);
     
+    // TODO! rewrite this yucky code
     while (1)
     {
         raft_entry_t* e;
@@ -240,9 +231,9 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         e = log_get_from_idx(me->log, me->last_applied_idx + 1);
         
         /* majority has this */
-        if (e)
-            __log(me_, "entry %d has %d commits", me->last_applied_idx + 1,
-                  e->num_nodes);
+        if (e) {
+            __log(me_, "entry %d has %d commits", me->last_applied_idx + 1, e->num_nodes);
+        }
         if (e && me->num_nodes / 2 <= e->num_nodes)
         {
             if (0 == raft_apply_entry(me_)) break;
@@ -253,6 +244,8 @@ int raft_recv_appendentries_response(raft_server_t* me_,
             break;
         }
     }
+    
+    // optimization
     if (committedNewEntry || raft_node_get_next_idx(p) < me->current_idx)
         raft_send_appendentries(me_, node);
     
@@ -274,8 +267,6 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     __log(me_, "n_entries %d", ae->n_entries);
     __log(me_, "leader_commit %d", ae->leader_commit);
     
-    r.term = me->current_term;
-    
     /* we've found a leader who is legitimate */
     if (raft_is_leader(me_) && me->current_term <= ae->term)
         raft_become_follower(me_);
@@ -287,22 +278,6 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
         r.success = 0;
         goto done;
     }
-    
-    // TODO! Need some kind of duplicate detection so we don't apply the same
-    // entry more than once (if master sends two identical appendentries
-    // messages before getting the first response
-    // but we don't want to compromise the need for the master to overwrite
-    // the log entries of the follower
-    
-#if 0
-    if (-1 != ae->prev_log_idx &&
-        ae->prev_log_idx < raft_get_current_idx(me_))
-    {
-        __log(me_, "AE prev_idx is less than current idx");
-        r.success = 0;
-        goto done;
-    }
-#endif
     
     /* not the first appendentries we've received */
     if (-1 != ae->prev_log_idx)
@@ -335,7 +310,6 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
             __log(me_, "AE no log at prev_idx");
             r.success = 0;
             goto done;
-            //assert(0);
         }
     }
     
@@ -359,8 +333,6 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     __log(me_, "setting current term to %d", ae->term);
     raft_set_current_term(me_, ae->term);
     
-    // append all entries to log if we don't have them already
-    // NOTE: for now it is always just 1
     msg_entry_t cmd = ae->entry;
     raft_entry_t* c;
     
@@ -377,10 +349,6 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
         c = malloc(sizeof(raft_entry_t));
         c->term = me->current_term;
         c->entry = cmd;
-        /*c->len = cmd->len;
-         c->id = cmd->id;
-         c->data = malloc(cmd->len);
-         memcpy(c->data, cmd->data, cmd->len);*/
         if (0 == raft_append_entry(me_, c))
         {
             __log(me_, "AE failure; couldn't append entry");
@@ -390,9 +358,8 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     }
     
 
+    r.term = me->current_term;
     r.success = 1;
-    // If n_entries == 1, first_idx == current_idx
-    // otherwise first_idx + 1 == current_idx
     r.current_idx = raft_get_current_idx(me_);
     r.first_idx = ae->prev_log_idx + 1;
     
@@ -403,7 +370,7 @@ done:
     __log(me_, "current_idx: %d", r.current_idx);
     __log(me_, "first_idx: %d", r.first_idx);
     if (me->cb.send_appendentries_response)
-        me->cb.send_appendentries_response(me_, me->udata, node, &r);
+        me->cb.send_appendentries_response(me_, node, &r);
     return 1;
 }
 
@@ -439,7 +406,7 @@ int raft_recv_requestvote(raft_server_t* me_, int node, msg_requestvote_t* vr)
     
     r.term = raft_get_current_term(me_);
     if (me->cb.send_requestvote_response)
-        me->cb.send_requestvote_response(me_, me->udata, node, &r);
+        me->cb.send_requestvote_response(me_, node, &r);
     
     return 0;
 }
@@ -467,9 +434,6 @@ int raft_recv_requestvote_response(raft_server_t* me_, int node,
     
     assert(node < me->num_nodes);
     
-    //    if (r->term != raft_get_current_term(me_))
-    //        return 0;
-    
     if (1 == r->vote_granted)
     {
         int votes;
@@ -484,21 +448,6 @@ int raft_recv_requestvote_response(raft_server_t* me_, int node,
     return 0;
 }
 
-int raft_send_entry_response(raft_server_t* me_,
-                             int node, int etyid, int was_committed)
-{
-    raft_server_private_t* me = (void*)me_;
-    msg_entry_response_t res;
-    
-    __log(me_, "send entry response to: %d", node);
-    
-    res.id = etyid;
-    res.was_committed = was_committed;
-    if (me->cb.send_entries_response)
-        me->cb.send_entries_response(me_, me->udata, node, &res);
-    return 0;
-}
-
 int raft_recv_entry(raft_server_t* me_, int node, msg_entry_t* e)
 {
     raft_server_private_t* me = (void*)me_;
@@ -510,12 +459,7 @@ int raft_recv_entry(raft_server_t* me_, int node, msg_entry_t* e)
     ety.term = me->current_term;
     ety.entry = *e;
     ety.num_nodes = 0;
-/*    ety.id = e->id;
-    ety.data = e->data;
-    ety.len = e->len; */
     res = raft_append_entry(me_, &ety);
-    // We don't need this because our clients are infused with the raft servers
-    //raft_send_entry_response(me_, node, e->id, res);
     for (i=0; i<me->num_nodes; i++)
     {
         if (me->nodeid == i) continue;
@@ -540,7 +484,7 @@ int raft_send_requestvote(raft_server_t* me_, int node)
     rv.term = me->current_term;
     rv.last_log_idx = raft_get_current_idx(me_);
     if (me->cb.send_requestvote)
-        me->cb.send_requestvote(me_, me->udata, node, &rv);
+        me->cb.send_requestvote(me_, node, &rv);
     return 1;
 }
 
@@ -571,7 +515,7 @@ int raft_apply_entry(raft_server_t* me_)
     if (me->commit_idx < me->last_applied_idx)
         me->commit_idx = me->last_applied_idx;
     if (me->cb.applylog)
-        me->cb.applylog(me_, me->udata, e->entry);
+        me->cb.applylog(me_, e->entry);
     return 1;
 }
 
@@ -606,13 +550,7 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     else {
         ae.n_entries = 0;
     }
-    
-    // This should not be here, but just making sure id is not wrong
-    // REMOVE AFTER TESTING with 1 touch
-    if (ae.n_entries == 1) {
-        ae.entry.id = 1;
-    }
-    
+        
     __log(me_, "SENDING APPENDENTRIES TO: %d", node);
     __log(me_, "current_idx %d", me->current_idx);
     __log(me_, "node_next_idx %d", node_next_idx);
@@ -625,7 +563,7 @@ void raft_send_appendentries(raft_server_t* me_, int node)
     __log(me_, "leader_commit %d", ae.leader_commit);
     
     if (me->cb.send_appendentries)
-        me->cb.send_appendentries(me_, me->udata, node, &ae);
+        me->cb.send_appendentries(me_, node, &ae);
 }
 
 void raft_send_appendentries_all(raft_server_t* me_)
@@ -640,20 +578,16 @@ void raft_send_appendentries_all(raft_server_t* me_)
     }
 }
 
-void raft_set_configuration(raft_server_t* me_,
-                            raft_node_configuration_t* nodes)
+void raft_set_configuration(raft_server_t* me_, int num_nodes)
 {
     raft_server_private_t* me = (void*)me_;
-    int num_nodes;
     
-    /* TODO: one memory allocation only please */
-    for (num_nodes=0; nodes->udata_address; nodes++)
-    {
-        num_nodes++;
-        me->nodes = realloc(me->nodes,sizeof(raft_node_t*) * num_nodes);
-        me->num_nodes = num_nodes;
-        me->nodes[num_nodes-1] = raft_node_new(nodes->udata_address);
+    me->num_nodes = num_nodes;
+    me->nodes = malloc(sizeof(raft_node_t) * num_nodes);
+    for (int i = 0; i < num_nodes; i++) {
+        me->nodes[i] = raft_node_new();
     }
+    
     me->votes_for_me = calloc(num_nodes, sizeof(int));
 }
 
