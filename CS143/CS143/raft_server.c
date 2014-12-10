@@ -204,7 +204,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     {
         /* If AppendEntries fails because of log inconsistency:
          decrement nextIndex and retry (§5.3) */
-        assert(0 <= raft_node_get_next_idx(p));
+        assert(-1 <= raft_node_get_next_idx(p));
         // TODO does this have test coverage?
         // TODO can jump back to where node is different instead of iterating
         raft_node_set_next_idx(p, raft_node_get_next_idx(p)-1);
@@ -213,12 +213,13 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     }
 
     
+    // TODO! is this right?
     if (raft_node_get_next_idx(p) == r->current_idx) {
         // the node didn't change its current_idx
         // we have nothing to do
         return 1;
     }
-        
+    
     int committedNewEntry = 0;
     
     for (int i=r->first_idx; i<r->current_idx; i++) {
@@ -278,7 +279,7 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     /* 1. Reply false if term < currentTerm (§5.1) */
     if (ae->term < me->current_term)
     {
-        __log(me_, "AE term is less than current term");
+        __log(me_, "AE term %d is less than current term %d", ae->term, me->current_term);
         r.success = 0;
         goto done;
     }
@@ -351,6 +352,7 @@ int raft_recv_appendentries(raft_server_t* me_, const int node, msg_appendentrie
     if (raft_is_candidate(me_))
         raft_become_follower(me_);
     
+    __log(me_, "setting current term to %d", ae->term);
     raft_set_current_term(me_, ae->term);
     
     // append all entries to log if we don't have them already

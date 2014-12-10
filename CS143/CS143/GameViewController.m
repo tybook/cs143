@@ -67,6 +67,8 @@ NSMutableDictionary *pPeripheralRaftIdxDict;
 CBPeripheralManager *pPeripheralManager;
 CBMutableCharacteristic *pToCandidateCharacteristic;
 CBMutableCharacteristic *pToCentralCharacteristic;
+CBCentralManager      *pCentralManager;
+
 GameScene *pScene;
 
 
@@ -121,7 +123,12 @@ GameScene *pScene;
     raft_periodic(raft_server, RAFT_PERIODIC_SEC*1000);
 }
 
-- (void) raft_start
+-(void) raft_call_become_candidate
+{
+    raft_become_candidate(raft_server);
+}
+
+- (void)raft_start:(int)startCandidate
 {
     if (self.raft_started)
         return;
@@ -170,7 +177,13 @@ GameScene *pScene;
     raft_set_configuration(raft_server, nodes);
     
     // MAKE SURE THIS WORKS
-    raft_become_candidate(raft_server);
+    if (startCandidate) {
+        [NSTimer scheduledTimerWithTimeInterval:0.5
+                                         target:self
+                                       selector:@selector(raft_call_become_candidate)
+                                       userInfo:nil
+                                        repeats:NO];
+    }
 
     // periodically update raft state
     [NSTimer scheduledTimerWithTimeInterval:RAFT_PERIODIC_SEC
@@ -249,6 +262,16 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
     return 1;
 }
 
+int startscan() {
+    [pCentralManager scanForPeripheralsWithServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]
+                                                options:@{ CBCentralManagerScanOptionAllowDuplicatesKey : @YES }];
+    return 1;
+}
+
+int stopscan() {
+    return 1;
+}
+
 - (void)viewDidLoad
 {
     [super viewDidLoad];
@@ -275,7 +298,9 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
         .send_requestvote_response = send_requestvote_response ,
         .send_appendentries = send_appendentries ,
         .send_appendentries_response = send_appendentries_response ,
-        .applylog = applylog
+        .applylog = applylog ,
+        .startscan = startscan ,
+        .stopscan = stopscan
     };
     
     /* don't think we need the passed in udata to this function */
@@ -296,7 +321,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
     // Start up the CBCentralManager
     //dispatch_queue_t centralQueue = dispatch_queue_create("centralQueue", DISPATCH_QUEUE_SERIAL);
     self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
-    
+    pCentralManager = self.centralManager;
 
     // Present the scene.
     [skView presentScene:self.scene];
@@ -404,7 +429,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
 {
     // If this is the first request, and there are connected device, start up the raft server
     if (!self.raft_started && [self.connectedPeripherals count] > 0) {
-        [self.scene startGame];
+        [self.scene startGame:0];
     }
     
     // If this is the first request, and there are no connected devices, we must be rejoining an existing game

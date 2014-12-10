@@ -230,6 +230,18 @@ msg_entry_t entry
 const int len */
 );
 
+typedef int (
+*func_startscan_f
+)   (
+void
+);
+
+typedef int (
+*func_stopscan_f
+)   (
+void
+);
+
 typedef struct {
     func_send_requestvote_f send_requestvote;
     func_send_requestvote_response_f send_requestvote_response;
@@ -242,6 +254,9 @@ typedef struct {
     func_log_f log;
     
     func_applylog_f applylog;
+    
+    func_startscan_f startscan;
+    func_stopscan_f stopscan;
 } raft_cbs_t;
 
 typedef struct {
