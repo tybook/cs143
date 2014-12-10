@@ -49,6 +49,8 @@
 @property (strong, nonatomic) CBMutableCharacteristic   *fromCandidateCharacteristic;
 /* Client proposals of data */
 @property (strong, nonatomic) CBMutableCharacteristic   *proposeCharacteristic;
+/* New device is waiting to join */
+@property (strong, nonatomic) CBMutableCharacteristic   *joinCharacteristic;
 
 /* Two way dictionary from UUID to RaftIdx and from RaftIdx to UUID */
 @property (strong, nonatomic)  NSMutableDictionary *PeripheralRaftIdxDict;
@@ -78,6 +80,7 @@ GameScene *pScene;
 #define RAFT_TO_CANDIDATE_CHAR_UUID            @"C1224A79-4715-4FFB-B43F-EA2B425EDD98"
 #define RAFT_FROM_CANDIDATE_CHAR_UUID          @"85B3A6E5-42AF-4F8F-AECD-50E60A65A521"
 #define RAFT_PROPOSE_CHAR_UUID                 @"6A401949-869B-4DAF-9E75-2FFEF411EDEE"
+#define RAFT_JOIN_CHAR_UUID                    @"2189B982-FD8E-46E1-9BB5-A35996E1FB3D"
 
 #define RAFT_PERIODIC_SEC                     0.01
 
@@ -269,6 +272,8 @@ int startscan() {
 }
 
 int stopscan() {
+    // TODO! is it safe to call stopScan even if we aren't scanning?
+    [pCentralManager stopScan];
     return 1;
 }
 
@@ -541,7 +546,16 @@ int stopscan() {
 {
     NSLog(@"Peripheral %@ Connected", peripheral);
     [self.connectedPeripherals setObject:[[NSMutableDictionary alloc]init] forKey:peripheral];
-    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    
+    //
+    if (!self.raft_started)
+        [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    else {
+        // discovered a new device when the game was underway
+        
+        // tell everyone to start scanning and advertising
+        
+    }
     
     // Make sure we get the discovery callbacks
     peripheral.delegate = self;
@@ -640,23 +654,19 @@ int stopscan() {
 - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error
 {
     NSLog(@"Peripheral %@ Disconnected", peripheral);
-    if (!self.raft_started) {
-        [self.connectedPeripherals removeObjectForKey:peripheral];
-        [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
-        [self.discoveredPeripherals removeObject:peripheral];
-        [self cleanup:peripheral];
-    }
+    [self.connectedPeripherals removeObjectForKey:peripheral];
+    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    [self.discoveredPeripherals removeObject:peripheral];
+    [self cleanup:peripheral];
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didModifyServices:(NSArray *)invalidatedServices
 {
     NSLog(@"Peripheral %@ modified services", peripheral);
-    if (!self.raft_started) {
-        [self.connectedPeripherals removeObjectForKey:peripheral];
-        [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
-        [self.discoveredPeripherals removeObject:peripheral];
-        [self cleanup:peripheral];
-    }
+    [self.connectedPeripherals removeObjectForKey:peripheral];
+    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    [self.discoveredPeripherals removeObject:peripheral];
+    [self cleanup:peripheral];
 }
 
 /** Call this when things either go wrong, or you're done with the connection.
