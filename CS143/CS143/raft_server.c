@@ -200,44 +200,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
     
     p = raft_get_node(me_, node);
     
-    
-    if (1 == r->success)
-    {
-        int i;
-        int committedNewEntry = 0;
-        
-        for (i=r->first_idx; i<r->current_idx; i++) {
-            __log(me_, "marking index %d as committed", i);
-            log_mark_node_has_committed(me->log, i);
-        }
-
-        raft_node_set_next_idx(p, r->current_idx);
-        
-        while (1)
-        {
-            raft_entry_t* e;
-            
-            e = log_get_from_idx(me->log, me->last_applied_idx + 1);
-            
-            /* majority has this */
-            if (e)
-                __log(me_, "entry %d has %d commits", me->last_applied_idx + 1,
-                    e->num_nodes);
-            if (e && me->num_nodes / 2 <= e->num_nodes)
-            {
-                if (0 == raft_apply_entry(me_)) break;
-                else committedNewEntry = 1;
-            }
-            else
-            {
-                break;
-            }
-        }
-        if (committedNewEntry)
-            raft_send_appendentries(me_, node);
-
-    }
-    else if (r->success == 0)
+    if (r->success == 0)
     {
         /* If AppendEntries fails because of log inconsistency:
          decrement nextIndex and retry (§5.3) */
@@ -246,7 +209,47 @@ int raft_recv_appendentries_response(raft_server_t* me_,
         // TODO can jump back to where node is different instead of iterating
         raft_node_set_next_idx(p, raft_node_get_next_idx(p)-1);
         raft_send_appendentries(me_, node);
+        return 1;
     }
+
+    
+    if (raft_node_get_next_idx(p) == r->current_idx) {
+        // the node didn't change its current_idx
+        // we have nothing to do
+        return 1;
+    }
+        
+    int committedNewEntry = 0;
+    
+    for (int i=r->first_idx; i<r->current_idx; i++) {
+        __log(me_, "marking index %d as committed", i);
+        log_mark_node_has_committed(me->log, i);
+    }
+    
+    raft_node_set_next_idx(p, r->current_idx);
+    
+    while (1)
+    {
+        raft_entry_t* e;
+        
+        e = log_get_from_idx(me->log, me->last_applied_idx + 1);
+        
+        /* majority has this */
+        if (e)
+            __log(me_, "entry %d has %d commits", me->last_applied_idx + 1,
+                  e->num_nodes);
+        if (e && me->num_nodes / 2 <= e->num_nodes)
+        {
+            if (0 == raft_apply_entry(me_)) break;
+            else committedNewEntry = 1;
+        }
+        else
+        {
+            break;
+        }
+    }
+    if (committedNewEntry)
+        raft_send_appendentries(me_, node);
     
     return 1;
 }

@@ -412,4 +412,6 @@ int raft_get_nvotes_for_me(raft_server_t* me_);
  * @return node ID of who I voted for */
 int raft_get_voted_for(raft_server_t* me);
 
+void raft_become_candidate(raft_server_t* me_);
+
 #endif /* RAFT_H_ */

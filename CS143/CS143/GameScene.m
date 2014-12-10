@@ -22,9 +22,11 @@ GameViewController *gameView;
 
 @implementation GameScene
 
--(void)clearScene
+-(void)clearPressed
 {
-    [self removeAllChildren];
+    // Propose a value at location (-1, -1)
+    CGPoint location = CGPointMake(-1, -1);
+    [self.gameView proposeData:location];
 }
 
 -(void)startGame
@@ -66,7 +68,7 @@ GameViewController *gameView;
     [self.resetButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
                                      self.view.frame.size.height - 75, width, height)];
     [self.resetButton setTitle:@"Reset" forState:UIControlStateNormal];
-    [self.resetButton addTarget:self action:@selector(clearScene) forControlEvents:UIControlEventTouchUpInside];
+    [self.resetButton addTarget:self action:@selector(clearPressed) forControlEvents:UIControlEventTouchUpInside];
     self.resetButton.hidden = YES;
     [self.view addSubview:self.resetButton];
     
@@ -101,6 +103,11 @@ GameViewController *gameView;
 
 -(void)drawTouch:(CGPoint)coors
 {
+    if (coors.x == -1 && coors.y == -1) {
+        // clear the scene
+        [self removeAllChildren];
+        return;
+    }
     SKSpriteNode *sprite = [SKSpriteNode spriteNodeWithImageNamed:@"Spaceship"];
     
     sprite.xScale = 0.2;

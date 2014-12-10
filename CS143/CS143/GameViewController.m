@@ -168,6 +168,9 @@ GameScene *pScene;
     nodes[[idx intValue]] = nodeEnd;
 
     raft_set_configuration(raft_server, nodes);
+    
+    // MAKE SURE THIS WORKS
+    raft_become_candidate(raft_server);
 
     // periodically update raft state
     [NSTimer scheduledTimerWithTimeInterval:RAFT_PERIODIC_SEC
@@ -399,10 +402,16 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral didReceiveWriteRequests:(NSArray *)requests
 {
-    /* If this is the first request, start up the raft server */
-    if (!self.raft_started) {
+    // If this is the first request, and there are connected device, start up the raft server
+    if (!self.raft_started && [self.connectedPeripherals count] > 0) {
         [self.scene startGame];
     }
+    
+    // If this is the first request, and there are no connected devices, we must be rejoining an existing game
+    if (!self.raft_started && [self.connectedPeripherals count] == 0) {
+        NSLog(@"GOT WRITE REQUEST");
+    }
+    
     
     /* TODO! loop through all the requests, not just the first one */
     CBATTRequest* request = [requests objectAtIndex:0];
@@ -606,19 +615,23 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
 - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error
 {
     NSLog(@"Peripheral %@ Disconnected", peripheral);
-    [self.connectedPeripherals removeObjectForKey:peripheral];
-    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
-    [self.discoveredPeripherals removeObject:peripheral];
-    [self cleanup:peripheral];
+    if (!self.raft_started) {
+        [self.connectedPeripherals removeObjectForKey:peripheral];
+        [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+        [self.discoveredPeripherals removeObject:peripheral];
+        [self cleanup:peripheral];
+    }
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didModifyServices:(NSArray *)invalidatedServices
 {
     NSLog(@"Peripheral %@ modified services", peripheral);
-    [self.connectedPeripherals removeObjectForKey:peripheral];
-    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
-    [self.discoveredPeripherals removeObject:peripheral];
-    [self cleanup:peripheral];
+    if (!self.raft_started) {
+        [self.connectedPeripherals removeObjectForKey:peripheral];
+        [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+        [self.discoveredPeripherals removeObject:peripheral];
+        [self cleanup:peripheral];
+    }
 }
 
 /** Call this when things either go wrong, or you're done with the connection.
