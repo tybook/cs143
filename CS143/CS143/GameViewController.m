@@ -400,6 +400,12 @@ int stopscan() {
                                   value:nil
                                   permissions:CBAttributePermissionsReadable];
     
+    self.joinCharacteristic = [[CBMutableCharacteristic alloc]
+                                  initWithType:[CBUUID UUIDWithString:RAFT_JOIN_CHAR_UUID]
+                                  properties:CBCharacteristicPropertyNotify|CBCharacteristicPropertyRead
+                                  value:nil
+                                  permissions:CBAttributePermissionsReadable];
+    
     self.fromCentralCharacteristic = [[CBMutableCharacteristic alloc]
                                       initWithType:[CBUUID UUIDWithString:RAFT_FROM_CENTRAL_CHAR_UUID]
                                       properties:CBCharacteristicPropertyWriteWithoutResponse
@@ -419,7 +425,7 @@ int stopscan() {
     // Add the characteristic to the service
     transferService.characteristics = @[self.toCentralCharacteristic, self.fromCentralCharacteristic,
                                         self.toCandidateCharacteristic, self.fromCandidateCharacteristic,
-                                        self.proposeCharacteristic];
+                                        self.proposeCharacteristic, self.joinCharacteristic];
     
     // And add it to the peripheral manager
     [self.peripheralManager addService:transferService];
@@ -438,6 +444,7 @@ int stopscan() {
     }
     
     // If this is the first request, and there are no connected devices, we must be rejoining an existing game
+    // TODO! probably don't want this...
     if (!self.raft_started && [self.connectedPeripherals count] == 0) {
         NSLog(@"GOT WRITE REQUEST");
     }
@@ -482,6 +489,13 @@ int stopscan() {
             raft_recv_appendentries(raft_server, node, &appendEntries);
         }
 
+    }
+}
+
+-(void)peripheralManager:(CBPeripheralManager *)peripheral central:(CBCentral *)central didSubscribeToCharacteristic:(CBCharacteristic *)characteristic
+{
+    if (self.raft_started) {
+        [self.peripheralManager stopAdvertising];
     }
 }
 
@@ -547,14 +561,16 @@ int stopscan() {
     NSLog(@"Peripheral %@ Connected", peripheral);
     [self.connectedPeripherals setObject:[[NSMutableDictionary alloc]init] forKey:peripheral];
     
-    //
     if (!self.raft_started)
         [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
     else {
         // discovered a new device when the game was underway
         
-        // tell everyone to start scanning and advertising
+        // tell everyone to start scanning and advertising if we are the leader
         
+        // add an entry to the PeripheralRaftIdxDict and create a new, fresh raft node
+        
+        // if we are not the leader then we can stop scanning
     }
     
     // Make sure we get the discovery callbacks
@@ -647,6 +663,13 @@ int stopscan() {
         int node = [self.PeripheralRaftIdxDict[peripheral] intValue];
         raft_recv_entry(raft_server, node, &msg);
     }
+    else if ([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_JOIN_CHAR_UUID]]) {
+        // leader found a new device... start scanning and advertising
+        [self.centralManager scanForPeripheralsWithServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]
+                                                options:@{ CBCentralManagerScanOptionAllowDuplicatesKey : @YES }];
+        [self.peripheralManager startAdvertising:@{ CBAdvertisementDataServiceUUIDsKey :
+                                                        @[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]] }];
+    }
 }
 
 /** Once the disconnection happens, we need to clean up our local copy of the peripheral
@@ -654,6 +677,11 @@ int stopscan() {
 - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error
 {
     NSLog(@"Peripheral %@ Disconnected", peripheral);
+    if (self.raft_started) {
+        // remove the entry from PeripheralRaftIdxDict
+        // clear out the node information inside of raft
+        // TODO
+    }
     [self.connectedPeripherals removeObjectForKey:peripheral];
     [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
     [self.discoveredPeripherals removeObject:peripheral];
