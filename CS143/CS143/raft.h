@@ -438,4 +438,6 @@ int raft_get_voted_for(raft_server_t* me);
 
 void raft_become_candidate(raft_server_t* me_);
 
+void raft_clear_node(raft_server_t* me_, int idx);
+
 #endif /* RAFT_H_ */

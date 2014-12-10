@@ -55,6 +55,9 @@
 /* Two way dictionary from UUID to RaftIdx and from RaftIdx to UUID */
 @property (strong, nonatomic)  NSMutableDictionary *PeripheralRaftIdxDict;
 
+/* Indices inside of raft nodes that have disconnected and can be reused */
+@property (strong, nonatomic) NSMutableArray *freeIndices;
+
 /* Whether or not the raft server has started at this node */
 @property (assign, nonatomic)  BOOL raft_started;
 @end
@@ -138,8 +141,8 @@ GameScene *pScene;
     self.raft_started = YES;
     
     // No need to advertise and scan anymore as the game has started
-    [self.peripheralManager stopAdvertising];
-    [self.centralManager stopScan];
+    //[self.peripheralManager stopAdvertising];
+    //[self.centralManager stopScan];
     
     // Discover the services of the connected peripherals
     // It is possible that the characteristics won't be discovered yet when this device
@@ -273,14 +276,13 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
 }
 
 int startscan() {
-    [pCentralManager scanForPeripheralsWithServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]
-                                                options:@{ CBCentralManagerScanOptionAllowDuplicatesKey : @YES }];
+    //[pCentralManager scanForPeripheralsWithServices:@[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]]
+     //                                           options:@{ CBCentralManagerScanOptionAllowDuplicatesKey : @YES }];
     return 1;
 }
 
 int stopscan() {
-    // TODO! is it safe to call stopScan even if we aren't scanning?
-    [pCentralManager stopScan];
+    //[pCentralManager stopScan];
     return 1;
 }
 
@@ -322,6 +324,8 @@ int stopscan() {
     self.PeripheralRaftIdxDict = [[NSMutableDictionary alloc]init];
     pConnectedPeripherals = self.connectedPeripherals;
     pPeripheralRaftIdxDict = self.PeripheralRaftIdxDict;
+    
+    self.freeIndices = [[NSMutableArray alloc]init];
     
     // Start up the CBPeripheralManager
     self.peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil];
@@ -448,13 +452,6 @@ int stopscan() {
         [self.scene startGame:0];
     }
     
-    // If this is the first request, and there are no connected devices, we must be rejoining an existing game
-    // TODO! probably don't want this...
-    if (!self.raft_started && [self.connectedPeripherals count] == 0) {
-        NSLog(@"GOT WRITE REQUEST");
-    }
-    
-    
     /* TODO! loop through all the requests, not just the first one */
     CBATTRequest* request = [requests objectAtIndex:0];
     NSData* request_data = request.value;
@@ -500,7 +497,7 @@ int stopscan() {
 -(void)peripheralManager:(CBPeripheralManager *)peripheral central:(CBCentral *)central didSubscribeToCharacteristic:(CBCharacteristic *)characteristic
 {
     if (self.raft_started) {
-        [self.peripheralManager stopAdvertising];
+        //[self.peripheralManager stopAdvertising];
     }
 }
 
@@ -570,12 +567,27 @@ int stopscan() {
         [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
     else {
         // discovered a new device when the game was underway
+        if ([self.freeIndices count] == 0) {
+            // no room in the game to join
+            return;
+        }
         
         // tell everyone to start scanning and advertising if we are the leader
+        if (raft_is_leader(raft_server)) {
+            [self.peripheralManager updateValue:NULL forCharacteristic:self.joinCharacteristic onSubscribedCentrals:nil];
+            [self.peripheralManager startAdvertising:@{ CBAdvertisementDataServiceUUIDsKey :
+                                                            @[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]] }];
+        }
+        else {
+  //          [self.centralManager stopScan];
+        }
         
-        // add an entry to the PeripheralRaftIdxDict and create a new, fresh raft node
+        // add an entry to the PeripheralRaftIdxDict
+        int newIdx = [self.freeIndices[0] intValue];
+        [self.freeIndices removeObjectAtIndex:0];
         
-        // if we are not the leader then we can stop scanning
+        [self.PeripheralRaftIdxDict setObject:[NSNumber numberWithInt:newIdx] forKey:peripheral];
+        [self.PeripheralRaftIdxDict setObject:peripheral forKey:[NSNumber numberWithInt:newIdx]];
     }
     
     // Make sure we get the discovery callbacks
@@ -631,9 +643,6 @@ int stopscan() {
         NSLog(@"Error discovering characteristics: %@", [error localizedDescription]);
         return;
     }
-
-    // IF THIS UPDATE HAS US AS THE TARGET...
-    // CBDescriptor maybe?
     
     if([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_TO_CANDIDATE_CHAR_UUID]]) {
         msg_requestvote_response_t voteResponse;
@@ -685,9 +694,11 @@ int stopscan() {
 {
     NSLog(@"Peripheral %@ Disconnected", peripheral);
     if (self.raft_started) {
-        // remove the entry from PeripheralRaftIdxDict
-        // clear out the node information inside of raft
-        // TODO
+        int idx = [[self.PeripheralRaftIdxDict objectForKey:peripheral] intValue];
+        [self.PeripheralRaftIdxDict removeObjectForKey:peripheral];
+        [self.PeripheralRaftIdxDict removeObjectForKey:[NSNumber numberWithInt:idx]];
+        raft_clear_node(raft_server, idx);
+        [self.freeIndices addObject:[NSNumber numberWithInt:idx]];
     }
     [self.connectedPeripherals removeObjectForKey:peripheral];
     [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
