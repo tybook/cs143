@@ -574,7 +574,8 @@ int stopscan() {
         
         // tell everyone to start scanning and advertising if we are the leader
         if (raft_is_leader(raft_server)) {
-            [self.peripheralManager updateValue:NULL forCharacteristic:self.joinCharacteristic onSubscribedCentrals:nil];
+            NSData *junk = [NSData dataWithBytes:NULL length:0];
+            [self.peripheralManager updateValue:junk forCharacteristic:self.joinCharacteristic onSubscribedCentrals:nil];
             [self.peripheralManager startAdvertising:@{ CBAdvertisementDataServiceUUIDsKey :
                                                             @[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]] }];
         }
