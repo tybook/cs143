@@ -327,7 +327,6 @@ int applylog(raft_server_t* raft, msg_entry_t entry)
     [self.peripheralManager startAdvertising:@{ CBAdvertisementDataServiceUUIDsKey :
                                                     @[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]] }];
     NSLog(@"Advertising started");
-    NSLog(@"start: %f", [[NSDate date] timeIntervalSince1970]);
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral didReceiveWriteRequests:(NSArray *)requests

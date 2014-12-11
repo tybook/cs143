@@ -20,11 +20,6 @@ GameViewController *gameView;
 
 @end
 
-NSMutableArray *data;
-NSTimeInterval oldTime;
-UITouch *touch;
-int count;
-
 @implementation GameScene
 
 -(void)clearPressed
@@ -32,22 +27,6 @@ int count;
     // Propose a value at location (-1, -1)
     CGPoint location = CGPointMake(-1, -1);
     [self.gameView proposeData:location];
-}
-
--(void)simulateTouch
-{
-    CGPoint location = CGPointMake(400, 400);
-    oldTime = [[NSDate date] timeIntervalSince1970];
-    [self.gameView proposeData:location];
-}
-
--(void)recordPressed
-{
-    [NSTimer scheduledTimerWithTimeInterval:1
-                                     target:self
-                                   selector:@selector(simulateTouch)
-                                   userInfo:nil
-                                    repeats:YES];
 }
 
 -(void)startGame
@@ -71,9 +50,7 @@ int count;
 
 -(void)didMoveToView:(SKView *)view {
     self.gameView = (GameViewController *)[[[[UIApplication sharedApplication] delegate] window] rootViewController];
-    
-    data = [[NSMutableArray alloc]init];
-    
+        
     /* Setup your scene here */
     self.startButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
     self.startButton.titleLabel.font = [UIFont systemFontOfSize:16];
@@ -95,14 +72,6 @@ int count;
     self.resetButton.hidden = YES;
     [self.view addSubview:self.resetButton];
     
-    UIButton *testButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
-    testButton.titleLabel.font = [UIFont systemFontOfSize:16];
-    [testButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
-                                          self.view.frame.size.height - 150, width, height)];
-    [testButton setTitle:@"Record" forState:UIControlStateNormal];
-    [testButton addTarget:self action:@selector(recordPressed) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:testButton];
-    
     self.connectedLabel = [[UILabel alloc]initWithFrame:CGRectMake((self.view.frame.size.width - width)/2,
                                                                    (self.view.frame.size.height - height)/2 + 50, width, height)];
     self.connectedLabel.text = @"0 Connected";
@@ -116,7 +85,6 @@ int count;
         
     for (UITouch *touch in touches) {
         CGPoint location = [touch locationInNode:self];
-        NSLog(@"%f %f", location.x, location.y);
         [self.gameView proposeData:location];
     }
 }
@@ -143,7 +111,6 @@ int count;
 
 -(void)applyLog:(unsigned char *)entry
 {
-    NSLog(@"time: %f", [[NSDate date] timeIntervalSince1970]);
     CGFloat x = *(CGFloat*)entry;
     CGFloat y = *((CGFloat*)entry + 1);
 
