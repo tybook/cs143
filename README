@@ -1,0 +1,3 @@
+The code is all just an Xcode project, so you should just be able to open CS143.xcodeproj. Note that Bluetooth does not work in the iOS simulator, so you'll need a developer license to build & run the project on a physical Bluetooth 4.0-capable iOS device. 
+
+Within the project the GameScene and GameViewController classes make up the game client, and the RaftBLE class makes up our code which ties together the C raft implementation (in the "raft" group) with the CoreBluetooth framework. The C raft implementation is based on the code found at https://github.com/willemt/raft, but we fixed numerous bugs and modified it to fit our needs. 
