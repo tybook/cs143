@@ -88,7 +88,6 @@ void raft_become_leader(raft_server_t* me_)
 {
     raft_server_private_t* me = (void*)me_;
     int i;
-    printf("becoming leader");
     __log(me_, "becoming leader");
     
     raft_set_state(me_,RAFT_STATE_LEADER);

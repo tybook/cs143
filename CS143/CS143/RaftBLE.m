@@ -327,6 +327,7 @@ int applylog(raft_server_t* raft, msg_entry_t entry)
     [self.peripheralManager startAdvertising:@{ CBAdvertisementDataServiceUUIDsKey :
                                                     @[[CBUUID UUIDWithString:RAFT_SERVICE_UUID]] }];
     NSLog(@"Advertising started");
+    NSLog(@"start: %f", [[NSDate date] timeIntervalSince1970]);
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral didReceiveWriteRequests:(NSArray *)requests
@@ -536,7 +537,6 @@ int applylog(raft_server_t* raft, msg_entry_t entry)
     }
     
     if([characteristic.UUID isEqual: [CBUUID UUIDWithString: RAFT_TO_CANDIDATE_CHAR_UUID]]) {
-        NSLog(@"Got vote: %f", [[NSDate date] timeIntervalSince1970]);
         msg_requestvote_response_t voteResponse;
         [characteristic.value getBytes:&voteResponse length:sizeof(msg_requestvote_response_t)];
         NSString *receivedVoteeUUID = [[[NSUUID alloc] initWithUUIDBytes:(unsigned char *)voteResponse.uuid] UUIDString];
@@ -579,7 +579,6 @@ int applylog(raft_server_t* raft, msg_entry_t entry)
  */
 - (void)centralManager:(CBCentralManager *)central didDisconnectPeripheral:(CBPeripheral *)peripheral error:(NSError *)error
 {
-    NSLog(@"start: %f", [[NSDate date] timeIntervalSince1970]);
     NSLog(@"Peripheral %@ Disconnected", peripheral);
     if (self.raft_started) {
         int idx = [[self.PeripheralRaftIdxDict objectForKey:peripheral] intValue];

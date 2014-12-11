@@ -143,10 +143,7 @@ int count;
 
 -(void)applyLog:(unsigned char *)entry
 {
-    NSTimeInterval newTime = [[NSDate date] timeIntervalSince1970];
-    count++;
-    NSLog(@"%d::%f", count, newTime - oldTime);
-    [data addObject:[NSNumber numberWithDouble:newTime - oldTime]];
+    NSLog(@"time: %f", [[NSDate date] timeIntervalSince1970]);
     CGFloat x = *(CGFloat*)entry;
     CGFloat y = *((CGFloat*)entry + 1);
 
