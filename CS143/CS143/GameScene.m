@@ -90,8 +90,6 @@ GameViewController *gameView;
         // Propose a client action
         
         [self.gameView proposeData:location];
-        
-        //[self drawTouch:location];
     }
 }
 
