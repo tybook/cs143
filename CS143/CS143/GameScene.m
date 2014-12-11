@@ -23,6 +23,7 @@ GameViewController *gameView;
 NSMutableArray *data;
 NSTimeInterval oldTime;
 UITouch *touch;
+int count;
 
 @implementation GameScene
 
