@@ -41,8 +41,8 @@
 		5FB3FAD81A2BCBEC00DF6FFA /* raft_node.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = raft_node.c; sourceTree = "<group>"; };
 		5FB3FADA1A2BCC0100DF6FFA /* raft_log.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = raft_log.c; sourceTree = "<group>"; };
 		5FB3FADC1A2BCC0F00DF6FFA /* raft_server_properties.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = raft_server_properties.c; sourceTree = "<group>"; };
-		E734D6161A38E60E00A29D3A /* RaftBLE.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RaftBLE.h; path = ../RaftBLE.h; sourceTree = "<group>"; };
 		E734D6171A38E67400A29D3A /* RaftBLE.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftBLE.m; sourceTree = "<group>"; };
+		E78D7E1E1A39500100066385 /* RaftBLE.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftBLE.h; sourceTree = "<group>"; };
 		E7BC78C31A2929810061FBC6 /* CS143.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CS143.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7BC78C71A2929810061FBC6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E7BC78C81A2929810061FBC6 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
@@ -114,8 +114,8 @@
 		E7BC78C51A2929810061FBC6 /* CS143 */ = {
 			isa = PBXGroup;
 			children = (
-				E734D6161A38E60E00A29D3A /* RaftBLE.h */,
 				E734D6171A38E67400A29D3A /* RaftBLE.m */,
+				E78D7E1E1A39500100066385 /* RaftBLE.h */,
 				E7BC78CA1A2929810061FBC6 /* AppDelegate.h */,
 				E7BC78CB1A2929810061FBC6 /* AppDelegate.m */,
 				E7BC78CD1A2929810061FBC6 /* GameScene.h */,
