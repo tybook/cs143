@@ -22,7 +22,7 @@
 #include "raft_log.h"
 #include "raft_private.h"
 
-#define DEBUG 1
+#define DEBUG 0
 
 
 static void __log(raft_server_t *me_, const char *fmt, ...)
