@@ -11,10 +11,4 @@
 
 @interface GameScene : SKScene <RaftBLEDelegate>
 
-// This will also start the raft server
--(void)startGame:(int)startCandidate;
-
--(void)drawTouch: (CGPoint) coors;
--(void)handleConnected: (NSUInteger) numConnected;
-
 @end

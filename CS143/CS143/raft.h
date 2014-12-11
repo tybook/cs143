@@ -29,8 +29,7 @@ typedef struct {
 
 typedef struct {
     /* entry data */
-    // TODO! should think of a more abstracted way of doing this...
-    float data[2];
+    unsigned char data[20];
 } msg_entry_t;
 
 typedef struct {
@@ -140,26 +139,12 @@ raft_server_t* raft,
 msg_entry_t entry
 );
 
-typedef int (
-*func_startscan_f
-)   (
-void
-);
-
-typedef int (
-*func_stopscan_f
-)   (
-void
-);
-
 typedef struct {
     func_send_requestvote_f send_requestvote;
     func_send_requestvote_response_f send_requestvote_response;
     func_send_appendentries_f send_appendentries;
     func_send_appendentries_response_f send_appendentries_response;
     func_applylog_f applylog;
-    func_startscan_f startscan;
-    func_stopscan_f stopscan;
 } raft_cbs_t;
 
 typedef struct {

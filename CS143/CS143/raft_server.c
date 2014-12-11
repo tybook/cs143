@@ -91,8 +91,6 @@ void raft_become_leader(raft_server_t* me_)
     
     __log(me_, "becoming leader");
     
-    me->cb.startscan();
-    
     raft_set_state(me_,RAFT_STATE_LEADER);
     me->voted_for = -1;
     for (i=0; i<me->num_nodes; i++)
@@ -110,8 +108,6 @@ void raft_become_candidate(raft_server_t* me_)
     int i;
     
     __log(me_, "becoming candidate");
-    
-    me->cb.stopscan();
     
     memset(me->votes_for_me, 0, sizeof(int) * me->num_nodes);
     me->current_term += 1;
@@ -137,8 +133,6 @@ void raft_become_follower(raft_server_t* me_)
     raft_server_private_t* me = (void*)me_;
     
     __log(me_, "becoming follower");
-    
-    me->cb.stopscan();
     
     raft_set_state(me_, RAFT_STATE_FOLLOWER);
     me->voted_for = -1;

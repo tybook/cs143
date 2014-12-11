@@ -55,6 +55,7 @@ CBPeripheralManager *pPeripheralManager;
 CBMutableCharacteristic *pToCandidateCharacteristic;
 CBMutableCharacteristic *pToCentralCharacteristic;
 CBCentralManager      *pCentralManager;
+id<RaftBLEDelegate>   pDelegate;
 
 
 #define RAFT_SERVICE_UUID                      @"698C6448-C9A4-4CAC-A30A-D33F3AF25330"
@@ -69,8 +70,78 @@ CBCentralManager      *pCentralManager;
 
 @implementation RaftBLE
 
+CBCharacteristic *getCharacterisitic(int peer, NSString *charUUID, CBPeripheral **retP)
+{
+    // Get the peripheral with the given index
+    CBPeripheral *p = pPeripheralRaftIdxDict[[NSNumber numberWithInt:peer]];
+    *retP = p;
+    
+    // Get the right characteristic
+    NSMutableDictionary *characs = pConnectedPeripherals[p];
+    if (characs) {
+        CBCharacteristic *charac = characs[[CBUUID UUIDWithString:charUUID]];
+        return charac;
+    }
+    return NULL;
+}
+
+/* Write to RAFT_FROM_CANDIDATE characterisitic of peer */
+int send_requestvote(raft_server_t* raft, int peer, msg_requestvote_t* msg)
+{
+    CBPeripheral *p;
+    CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CANDIDATE_CHAR_UUID, &p);
+    if (charac) {
+        unsigned char uuid[16];
+        [[[UIDevice currentDevice] identifierForVendor] getUUIDBytes:uuid];
+        memcpy(&msg->uuid, uuid, 16);
+        NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_t)];
+        [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
+        return 1;
+    }
+    return 0;
+}
+
+/* Write to own RAFT_TO_CANDIDATE characteristic */
+int send_requestvote_response(raft_server_t* raft, int peer, msg_requestvote_response_t* msg)
+{
+    if(msg->vote_granted == 0) return 1;
+    
+    NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_response_t)];
+    [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCandidateCharacteristic onSubscribedCentrals:nil];
+    return 1;
+}
+
+/* Write to RAFT_FROM_CENTRAL characterisitic of peer */
+// TODO! make sure all these structs are not too big. How much room do we have?
+// maximumUpdateValueLength
+int send_appendentries(raft_server_t* raft, int peer, msg_appendentries_t* msg)
+{
+    CBPeripheral *p;
+    CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CENTRAL_CHAR_UUID, &p);
+    if (charac) {
+        NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_appendentries_t)];
+        [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
+        return 1;
+    }
+    return 0;
+}
+
+/* Write to own RAFT_TO_CENTRAL characteristic */
+int send_appendentries_response(raft_server_t* raft, int peer, msg_appendentries_response_t* msg)
+{
+    NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_appendentries_response_t)];
+    [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCentralCharacteristic onSubscribedCentrals:nil];
+    return 1;
+}
+
+int applylog(raft_server_t* raft, msg_entry_t entry)
+{
+    [pDelegate applyLog:entry.data];
+    return 1;
+}
+
 #pragma mark - Lifecycle
-- (id) init
+- (id) initWithDelegate:(id<RaftBLEDelegate>)delegate
 {
     if (self = [super init]) {
         // create a new raft server
@@ -85,7 +156,7 @@ CBCentralManager      *pCentralManager;
         };
         
         /* don't think we need the passed in udata to this function */
-        raft_set_callbacks(raft_server, &funcs, (void*) 0);
+        raft_set_callbacks(raft_server, &funcs);
         
         
         self.discoveredPeripherals = [[NSMutableArray alloc] init];
@@ -105,20 +176,20 @@ CBCentralManager      *pCentralManager;
         //dispatch_queue_t centralQueue = dispatch_queue_create("centralQueue", DISPATCH_QUEUE_SERIAL);
         self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
         pCentralManager = self.centralManager;
+        
+        self.delegate = delegate;
+        pDelegate = self.delegate;
     }
     
     return self;
 }
 
 #pragma mark - Raft function
--(void)proposeData:(CGPoint)point
+-(void)proposeLog:(unsigned char*)data length:(int)len
 {
     msg_entry_t msg;
-    // TODO! Make a unique id composed of an incrementing counter and the unique identifier of the device
-    msg.id = 1;
-    msg.data[0] = point.x;
-    msg.data[1] = point.y;
-    
+    memcpy(msg.data, data, len);
+        
     if (raft_is_leader(raft_server)) {
         raft_recv_entry(raft_server, 0, &msg);
     }
@@ -160,31 +231,16 @@ CBCentralManager      *pCentralManager;
     // set up the raft configuration with yourself as idx 0
     // keep a dictionary mapping UUID of peripheral to idx in nodes
     NSUInteger numConnected = [[self.connectedPeripherals allKeys] count];
-    // one for self and one for NULL termination
-    // TODO! This is wasteful to keep index 0 empty, don't think we need it...
-    raft_node_configuration_t *nodes = malloc((2 + numConnected)*sizeof(raft_node_configuration_t));
-    
-    // make sure this first node (self) doesn't look like the end
-    raft_node_configuration_t node = {(void*)1};
-    nodes[0] = node;
-    
     
     // Store the connected peripherals into nodes array
     NSNumber *idx = @1;
     for (CBPeripheral *p in [self.connectedPeripherals allKeys]) {
-        NSUUID *UUID = [p identifier];
-        // TODO! I'm not even using any passed in UUID for the configuration nodes
-        raft_node_configuration_t node = {(void*)CFBridgingRetain(UUID)};
-        nodes[[idx intValue]] = node;
         [self.PeripheralRaftIdxDict setObject:idx forKey:p];
         [self.PeripheralRaftIdxDict setObject:p forKey:idx];
         idx = @([idx intValue] + 1);
     }
     
-    raft_node_configuration_t nodeEnd = {(void*)0};
-    nodes[[idx intValue]] = nodeEnd;
-    
-    raft_set_configuration(raft_server, nodes);
+    raft_set_configuration(raft_server, (int)numConnected + 1);
     
     // MAKE SURE THIS WORKS
     if (startCandidate) {
@@ -203,80 +259,6 @@ CBCentralManager      *pCentralManager;
                                     repeats:YES];
 }
 
-CBCharacteristic *getCharacterisitic(int peer, NSString *charUUID, CBPeripheral **retP)
-{
-    // Get the peripheral with the given index
-    CBPeripheral *p = pPeripheralRaftIdxDict[[NSNumber numberWithInt:peer]];
-    *retP = p;
-    
-    // Get the right characteristic
-    NSMutableDictionary *characs = pConnectedPeripherals[p];
-    if (characs) {
-        CBCharacteristic *charac = characs[[CBUUID UUIDWithString:charUUID]];
-        return charac;
-    }
-    return NULL;
-}
-
-/* Write to RAFT_FROM_CANDIDATE characterisitic of peer */
-int send_requestvote(raft_server_t* raft, void* udata, int peer, msg_requestvote_t* msg)
-{
-    CBPeripheral *p;
-    CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CANDIDATE_CHAR_UUID, &p);
-    if (charac) {
-        unsigned char uuid[16];
-        [[[UIDevice currentDevice] identifierForVendor] getUUIDBytes:uuid];
-        memcpy(&msg->uuid, uuid, 16);
-        NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_t)];
-        [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
-        return 1;
-    }
-    return 0;
-}
-
-/* Write to own RAFT_TO_CANDIDATE characteristic */
-int send_requestvote_response(raft_server_t* raft, void* udata, int peer, msg_requestvote_response_t* msg)
-{
-    if(msg->vote_granted == 0) return 1;
-    
-    NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_requestvote_response_t)];
-    [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCandidateCharacteristic onSubscribedCentrals:nil];
-    return 1;
-}
-
-/* Write to RAFT_FROM_CENTRAL characterisitic of peer */
-// TODO! make sure all these structs are not too big. How much room do we have?
-// maximumUpdateValueLength
-int send_appendentries(raft_server_t* raft, void* udata, int peer, msg_appendentries_t* msg)
-{
-    CBPeripheral *p;
-    CBCharacteristic *charac = getCharacterisitic(peer, RAFT_FROM_CENTRAL_CHAR_UUID, &p);
-    if (charac) {
-        NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_appendentries_t)];
-        [p writeValue:dataToWrite forCharacteristic:charac type:CBCharacteristicWriteWithoutResponse];
-        return 1;
-    }
-    return 0;
-}
-
-/* Write to own RAFT_TO_CENTRAL characteristic */
-int send_appendentries_response(raft_server_t* raft, void* udata, int peer, msg_appendentries_response_t* msg)
-{
-    NSData *dataToWrite = [NSData dataWithBytes:msg length:sizeof(msg_appendentries_response_t)];
-    [pPeripheralManager updateValue:dataToWrite forCharacteristic:pToCentralCharacteristic onSubscribedCentrals:nil];
-    return 1;
-}
-
-// TODO change this
-int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
-{
-   /* CGPoint p;
-    p.x = entry.data[0];
-    p.y = entry.data[1];
-    NSLog(@"actually drawing the point: %f, %f", p.x, p.y);
-    [pScene drawTouch:p]; */
-    return 1;
-}
 
 #pragma mark - Peripheral Methods
 
@@ -351,7 +333,8 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
 {
     // If this is the first request, and there are connected device, start up the raft server
     if (!self.raft_started && [self.connectedPeripherals count] > 0) {
-        [self.scene startGame:0];
+        [self.delegate gameStarted];
+        [self raft_start:0];
     }
     
     for(CBATTRequest *request in requests) {
@@ -467,8 +450,9 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
     NSLog(@"Peripheral %@ Connected", peripheral);
     [self.connectedPeripherals setObject:[[NSMutableDictionary alloc]init] forKey:peripheral];
     
-    if (!self.raft_started)
-        [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    if (!self.raft_started) {
+        [self.delegate numConnectedDevicesChanged:[[self.connectedPeripherals allKeys] count]];
+    }
     else {
         // discovered a new device while the game is underway
         if ([self.freeIndices count] == 0) {
@@ -605,7 +589,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
         [self.freeIndices addObject:[NSNumber numberWithInt:idx]];
     }
     [self.connectedPeripherals removeObjectForKey:peripheral];
-    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    [self.delegate numConnectedDevicesChanged:[[self.connectedPeripherals allKeys] count]];
     [self.discoveredPeripherals removeObject:peripheral];
     [self cleanup:peripheral];
 }
@@ -614,7 +598,7 @@ int applylog(raft_server_t* raft, void *udata, msg_entry_t entry)
 {
     NSLog(@"Peripheral %@ modified services", peripheral);
     [self.connectedPeripherals removeObjectForKey:peripheral];
-    [self.scene handleConnected:[[self.connectedPeripherals allKeys] count]];
+    [self.delegate numConnectedDevicesChanged:[[self.connectedPeripherals allKeys] count]];
     [self.discoveredPeripherals removeObject:peripheral];
     [self cleanup:peripheral];
 }

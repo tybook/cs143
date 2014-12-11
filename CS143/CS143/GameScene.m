@@ -29,25 +29,21 @@ GameViewController *gameView;
     [self.gameView proposeData:location];
 }
 
--(void)startGame:(int)startCandidate
+-(void)startGame
 {
-    // Set the raft configuration and start raft_periodic
-    // This will send RequestVote messages, so other devices will
-    // know that someone has started the game
-    [self.gameView raft_start:startCandidate];
-    
-    
+    [self.gameView start_raft];
+    [self gameStarted];
+}
+
+-(void)gameStarted
+{
     // hide the start button and show the clear button
     self.resetButton.hidden = NO;
     self.startButton.hidden = YES;
     self.connectedLabel.hidden = YES;
 }
 
--(void)startGameAsCandidate {
-    [self startGame:1];
-}
-
--(void)handleConnected: (NSUInteger) numConnected
+-(void)numConnectedDevicesChanged:(NSUInteger)numConnected
 {
     self.connectedLabel.text = [NSString stringWithFormat:@"%lu Connected", (unsigned long)numConnected];
 }
@@ -63,7 +59,7 @@ GameViewController *gameView;
     [self.startButton setFrame:CGRectMake((self.view.frame.size.width - width)/2,
                                      (self.view.frame.size.height - height)/2, width, height)];
     [self.startButton setTitle:@"Start" forState:UIControlStateNormal];
-    [self.startButton addTarget:self action:@selector(startGameAsCandidate) forControlEvents:UIControlEventTouchUpInside];
+    [self.startButton addTarget:self action:@selector(startGame) forControlEvents:UIControlEventTouchUpInside];
     self.startButton.hidden = NO;
     [self.view addSubview:self.startButton];
     
@@ -87,18 +83,12 @@ GameViewController *gameView;
     /* Called when a touch begins */
     if (self.startButton.hidden == NO)
         return;
-    
-    // If raft_periodic has not started, start it now
-    /*if (!self.gameView.raft_periodic_started)
-    {
-        [self.gameView raft_start_periodic];
-        return;
-    }*/
-    
+        
     for (UITouch *touch in touches) {
         CGPoint location = [touch locationInNode:self];
         
         // Propose a client action
+        
         [self.gameView proposeData:location];
         
         //[self drawTouch:location];
@@ -124,6 +114,15 @@ GameViewController *gameView;
     
     [self addChild:sprite];
 }
+
+-(void)applyLog:(unsigned char *)entry
+{
+    CGFloat x = *(CGFloat*)entry;
+    CGFloat y = *((CGFloat*)entry + 1);
+
+    [self drawTouch:CGPointMake(x, y)];
+}
+
 
 -(void)update:(CFTimeInterval)currentTime {
     /* Called before each frame is rendered */

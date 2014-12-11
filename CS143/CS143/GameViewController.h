@@ -13,13 +13,8 @@
 
 @interface GameViewController : UIViewController
 
-/* Set up the raft configuration based on the currently connected devices.
-   Start periodic calls to update raft state */
-- (void)raft_start: (int) startCandidate;
+- (void)start_raft;
 
-/* TODO! Should abstract this */
 - (void)proposeData:(CGPoint) point;
-
-//+ (id) sharedController;
 
 @end
